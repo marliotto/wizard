@@ -8,7 +8,7 @@
 
 | Q                | A
 | ---------------- | ---
-| IP Tool version  | 1.0.?
+| Wizard version   | 1.0.?
 | PHP version      | 
 | Operating system |
 
