@@ -1,0 +1,24 @@
+{
+  "name": "ipstack/wizard",
+  "version": "1.0.0",
+  "type": "library",
+  "description": "Wizard for create databases for ipstack wizard",
+  "keywords": ["iptool", "ipstack", "ipstack-wizard", "ip", "geo", "geoip", "info", "data", "ip-database", "wizard"],
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Ivan Dudarev",
+      "email": "ivan@ddrv.ru",
+      "homepage": "https://ddrv.ru"
+    }
+  ],
+  "require": {
+    "php": ">=5.3",
+    "ext-pdo_sqlite": "*"
+  },
+  "autoload": {
+    "psr-4": {
+      "Ipstack\\Wizard\\": "src/"
+    }
+  }
+}
