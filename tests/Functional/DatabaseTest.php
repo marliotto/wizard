@@ -46,7 +46,7 @@ class DatabaseTest extends TestCase
             ->setFirstRow(2)
             ->setId(1)
             ->addField('name', 2, new StringField(0))
-            ->addField('country', 3, new NumericField(0))
+            ->addField('countryId', 3, new NumericField(0))
             ->addField('latitude', 4, new LatitudeField())
             ->addField('longitude', 5, new LongitudeField())
         ;
@@ -61,7 +61,7 @@ class DatabaseTest extends TestCase
             ->setLicense($license)
             ->addRegister('city', $cities)
             ->addRegister('country', $countries)
-            ->addRelation('city', 'country', 'country')
+            ->addRelation('city', 'countryId', 'country')
             ->addNetwork(
                 $network,
                 array(
@@ -74,12 +74,21 @@ class DatabaseTest extends TestCase
         $db = $this->parseFile($dbFile);
 
         $this->assertSame('ISD', $db['header']['control']);
+        $this->assertSame('A2code/A10name', $db['meta']['registers']['country']['pack']);
+        $this->assertSame(12, $db['meta']['registers']['country']['len']);
+        $this->assertSame(3, $db['meta']['registers']['country']['items']);
+        $this->assertSame('A15name/CcountryId/flatitude/flongitude', $db['meta']['registers']['city']['pack']);
+        $this->assertSame(24, $db['meta']['registers']['city']['len']);
+        $this->assertSame(5, $db['meta']['registers']['city']['items']);
+        $this->assertSame('Ccity', $db['meta']['networks']['pack']);
+        $this->assertSame(5, $db['meta']['networks']['len']);
+        $this->assertSame(7, $db['meta']['networks']['items']);
+        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame('country', $db['relations'][0]['c']);
         $this->assertSame($time, $db['time']);
         $this->assertSame($author, $db['author']);
         $this->assertSame($license, $db['license']);
-
-
-
 
         $tmpFiles = glob($tmpDir.DIRECTORY_SEPARATOR.'*');
         foreach ($tmpFiles as $tmpFile) {
@@ -152,7 +161,7 @@ class DatabaseTest extends TestCase
         unset($meta['name']);
         $result['meta']['networks'] = $meta;
         $offset += $result['header']['RGD'];
-        $result['index'] = unpack('I*',substr($header, $offset));
+        $result['index'] = array_values(unpack('I*',substr($header, $offset)));
 
         for ($i=0;$i<$result['meta']['networks']['items'];$i++) {
             $data = unpack(
