@@ -1,64 +1,75 @@
 <?php
+
 namespace Ipstack\Wizard;
 
-use \PDO;
-use \PDOException;
+use Ipstack\Wizard\Sheet\Field\NumericField;
+use Ipstack\Wizard\Sheet\Field\StringField;
+use Ipstack\Wizard\Sheet\Network;
+use Ipstack\Wizard\Sheet\Register;
+use Ipstack\Wizard\Sheet\Field\FieldAbstract;
+use PDO;
+use PDOStatement;
+use PDOException;
 
 /**
  * Class Wizard
  *
- * @property integer $time
- * @property string  $author
- * @property string  $license
- * @property string  $temporaryDir
- * @property array   $iterator
- * @property array   $encodings
- * @property array   $types
- * @property array   $csv
- * @property array   $registers
- * @property array   $networks
- * @property array   $ipData
- * @property array   $errors
- * @property array   $tmpFiles
- * @property array   $meta
- * @property PDO     $pdo
- *
+ * @const int FORMAT_VERSION
+ * @property string $tmpDir
+ * @property string $author
+ * @property string $license
+ * @property int    $time
+ * @property array  $networks
+ * @property array  $registers
+ * @property array  $relations
+ * @property PDO    $pdo
+ * @property PDOStatement $insertIps
+ * @property PDOStatement $insertRegister
+ * @property PDOStatement[][] $prepare
+ * @property string $prefix
+ * @property array $meta
  */
 class Wizard
 {
     /**
-     * Parser version.
+     * @const int
      */
-    const VERSION = 1;
+    const FORMAT_VERSION = 2;
+
+    /**
+     * @var string
+     */
+    protected $tmpDir;
+
+    /**
+     * @var string
+     */
+    protected $author;
+
+    /**
+     * @var string
+     */
+    protected $license;
 
     /**
      * @var integer
      */
-    protected $time = 0;
-
-    /**
-     * @var string
-     */
-    protected $author = '';
-
-    /**
-     * @var string
-     */
-    protected $license = '';
-
-    /**
-     * @var string
-     */
-    protected $temporaryDir;
+    protected $time;
 
     /**
      * @var array
      */
-    protected $iterator = array(
-        'csv' => 0,
-        'register' => 0,
-        'network' => 0,
-    );
+    protected $networks = array();
+
+    /**
+     * @var array
+     */
+    protected $registers = array();
+
+    /**
+     * @var array
+     */
+    protected $relations = array();
 
     /**
      * @var PDO
@@ -66,683 +77,559 @@ class Wizard
     protected $pdo;
 
     /**
-     * @var array
+     * @var PDOStatement
      */
-    protected $encodings=array(
-        'ASCII',
-        'EUC-JP',
-        'eucJP-win',
-        'UCS-4',
-        'UCS-4BE',
-        'UCS-4LE',
-        'UCS-2',
-        'UCS-2BE',
-        'UCS-2LE',
-        'UTF-32',
-        'UTF-32BE',
-        'UTF-32LE',
-        'UTF-16',
-        'UTF-16BE',
-        'UTF-16LE',
-        'UTF-7',
-        'UTF7-IMAP',
-        'UTF-8',
-        'SJIS',
-        'SJIS-win',
-        'ISO-2022-JP',
-        'ISO-2022-JP-MS',
-        'CP932',
-        'CP51932',
-        'SJIS-mac',
-        'MacJapanese',
-        'SJIS-Mobile#DOCOMO',
-        'SJIS-DOCOMO',
-        'SJIS-Mobile#KDDI',
-        'SJIS-KDDI',
-        'SJIS-Mobile#SOFTBANK',
-        'SJIS-SOFTBANK',
-        'UTF-8-Mobile#DOCOMO',
-        'UTF-8-DOCOMO',
-        'UTF-8-Mobile#KDDI-A',
-        'UTF-8-Mobile#KDDI-B',
-        'UTF-8-KDDI',
-        'UTF-8-Mobile#SOFTBANK',
-        'UTF-8-SOFTBANK',
-        'ISO-2022-JP-MOBILE#KDDI',
-        'ISO-2022-JP-KDDI',
-        'JIS',
-        'JIS-ms',
-        'CP50220',
-        'CP50220raw',
-        'CP50221',
-        'CP50222',
-        'ISO-8859-1',
-        'ISO-8859-2',
-        'ISO-8859-3',
-        'ISO-8859-4',
-        'ISO-8859-5',
-        'ISO-8859-6',
-        'ISO-8859-7',
-        'ISO-8859-8',
-        'ISO-8859-9',
-        'ISO-8859-10',
-        'ISO-8859-13',
-        'ISO-8859-14',
-        'ISO-8859-15',
-        'ISO-8859-16',
-        'byte2be',
-        'byte2le',
-        'byte4be',
-        'byte4le',
-        'BASE64',
-        'HTML-ENTITIES',
-        '7bit',
-        '8bit',
-        'EUC-CN',
-        'CP936',
-        'GB18030',
-        'HZ',
-        'EUC-TW',
-        'CP950',
-        'BIG-5',
-        'EUC-KR',
-        'UHC',
-        'CP949',
-        'ISO-2022-KR',
-        'Windows-1251',
-        'CP1251',
-        'Windows-1252',
-        'CP1252',
-        'CP866',
-        'IBM866',
-        'KOI8-R',
-        'KOI8-U',
-        'ArmSCII-8',
+    protected $insertIps;
+
+    /**
+     * @var string
+     */
+    protected $prefix;
+
+    /**
+     * @var PDOStatement[]
+     */
+    protected $prepare;
+
+    /**
+     * @var array $meta
+     */
+    protected $meta = array(
+        'index' => array(),
+        'registers' => array(),
+        'relations' => array(
+            'pack' => '',
+            'unpack' => '',
+            'len' => 3,
+            'items' => 0,
+        ),
+        'networks' => array(
+            'pack' => '',
+            'unpack' => '',
+            'len' => 4,
+            'items' => 0,
+            'fields' => array(),
+        ),
     );
-
-    /**
-     * @var array
-     */
-    protected $types=array('small','int','long','float','double','string');
-
-    /**
-     * @var array
-     */
-    protected $csv;
-
-    /**
-     * @var array
-     */
-    protected $registers;
-
-    /**
-     * @var array
-     */
-    protected $networks;
-
-    /**
-     * @var array
-     */
-    protected $ipData;
-
-    /**
-     * @var array
-     */
-    protected $errors;
-
-    /**
-     * @var array
-     */
-    protected $tmpFiles;
-
-    /**
-     * @var array
-     */
-    protected $meta;
 
     /**
      * Wizard constructor.
      *
-     * @param string $tmp
+     * @param string $tmpDir
+     * @throws \InvalidArgumentException
      */
-    public function __construct($tmp = null)
+    public function __construct($tmpDir)
     {
-        $this->errors = array();
-        $this->temporaryDir = (is_dir($tmp))?$tmp:sys_get_temp_dir();
+        if (!is_string($tmpDir)) {
+            throw new \InvalidArgumentException('incorrect tmpDir');
+        }
+        if (!is_dir($tmpDir)) {
+            throw new \InvalidArgumentException('tmpDir is not a directory');
+        }
+        if (!is_writable($tmpDir)) {
+            throw new \InvalidArgumentException('tmpDir is not a writable');
+        }
+        $this->tmpDir = $tmpDir;
+        $this->prefix = $this->tmpDir.DIRECTORY_SEPARATOR.'iptool.wizard.'.uniqid();
     }
 
     /**
-     * Get errors.
-     *
-     * @return array
-     */
-    public function getErrors()
-    {
-        return $this->errors;
-    }
-
-    /**
-     * Set author of database
+     * Set author.
      *
      * @param string $author
+     * @return $this
+     * @throws \InvalidArgumentException
      */
     public function setAuthor($author)
     {
+        if (!is_string($author)) {
+            throw new \InvalidArgumentException('incorrect author');
+        }
         if (mb_strlen($author) > 64) $author = mb_substr($author,0,64);
         $this->author = $author;
+        return $this;
     }
 
     /**
-     * Set creation time of database
-     *
-     * @param integer $time
-     */
-    public function setTime($time)
-    {
-        $time = (int)$time;
-        if ($time < 0) {
-            $time = 0;
-        }
-        $this->time = $time;
-    }
-
-    /**
-     * Set license of database
+     * Set license.
      *
      * @param string $license
+     * @return $this
+     * @throws \InvalidArgumentException
      */
     public function setLicense($license)
     {
+        if (!is_string($license)) {
+            throw new \InvalidArgumentException('incorrect license');
+        }
         $this->license = $license;
+        return $this;
     }
 
     /**
-     * Add source.
+     * Set time.
      *
-     * @param string $name
-     * @param string $file
-     * @param bool $ignoreFirstRows
-     * @param string $encoding
-     * @param string $delimiter
-     * @param string $enclosure
-     * @param string $escape
+     * @param integer $time
+     * @return $this
+     * @throws \InvalidArgumentException
      */
-    public function addCSV($name,$file,$ignoreFirstRows=true,$encoding='UTF-8',$delimiter=',',$enclosure='"',$escape='\\')
+    public function setTime($time)
     {
-        $this->iterator['csv']++;
-        $srcId = 'CSV #'.$this->iterator['csv'];
-        if (!is_string($name) || !preg_match('/^[a-z0-9]+$/ui',$name)) {
-            $this->errors[] = $srcId.' Parameter name must be string (a-z0-9)';
+        if (!is_int($time) || $time < 0) {
+            throw new \InvalidArgumentException('incorrect time');
         }
-        if (!is_string($file)){
-            $this->errors[] = $srcId.' Parameter file must be string';
+        $this->time = $time;
+        return $this;
+    }
+
+    /**
+     * Add network.
+     *
+     * @param Network $network
+     * @param array $map
+     * @return $this
+     * @throws \InvalidArgumentException
+     */
+    public function addNetwork($network, $map)
+    {
+        if (!($network instanceof Network)) {
+            throw new \InvalidArgumentException('incorrect network');
         }
-        $test = @fopen($file,'rb');
-        if ($test === false) {
-            $this->errors[] = $srcId.' Can\'t open file';
-        } else {
-            fclose($test);
-        }
-        if (!in_array($encoding,$this->encodings)) {
-            $this->errors[] = $srcId.' Parameter encoding must be '.implode(',',$this->encodings);
-        }
-        if (mb_strlen($delimiter) > 1) {
-            $this->errors[] = $srcId.' Parameter delimiter must be one symbol';
-        }
-        if (mb_strlen($enclosure) > 1) {
-            $this->errors[] = $srcId.' Parameter enclosure must be one symbol';
-        }
-        if (mb_strlen($escape) > 1) {
-            $this->errors[] = $srcId.' Parameter escape must be one symbol';
-        }
-        if (!empty($this->errors)) return;
-        $this->csv[$name]['file'] = $file;
-        $this->csv[$name]['ignoreFirstRows'] = empty($ignoreFirstRows)?0:(int)$ignoreFirstRows;
-        $this->csv[$name]['encoding'] = $encoding;
-        $this->csv[$name]['delimiter'] = $delimiter;
-        $this->csv[$name]['enclosure'] = $enclosure;
-        $this->csv[$name]['escape'] = $escape;
+        $this->networks[] = array(
+            'network' => $network,
+            'map' => $map,
+        );
+        return $this;
     }
 
     /**
      * Add register.
      *
-     * @param string  $name
-     * @param string  $csv
-     * @param integer $key
-     * @param array   $fields
+     * @param string $name
+     * @param Register $register
+     * @return $this
+     * @throws \InvalidArgumentException
      */
-    public function addRegister($name, $csv, $key, $fields)
+    public function addRegister($name, $register)
     {
-        $fieldIterator = 0;
-        $transforms = array('up','low','none');
-        $this->iterator['register']++;
-        $rgId = 'Register #'.$this->iterator['register'];
-        if (!is_string($name) || !preg_match('/^[a-z0-9]+$/ui',$name)) {
-            $this->errors[] = $rgId.' Parameter name must be string (a-z0-9)';
+        if (!Register::checkName($name)) {
+            throw new \InvalidArgumentException('incorrect name');
         }
-        if (!is_string($csv)) {
-            $this->errors[] = $rgId.' Parameter csv must be string';
-        } elseif (empty($this->csv[$csv])) {
-            $this->errors[] = $rgId.' Need adding csv with function addCSV()';
+        if (!($register instanceof Register)) {
+            throw new \InvalidArgumentException('incorrect register');
         }
-        if ((int)$key != $key) {
-            $this->errors[] = $rgId.' Parameter key must be integer';
+        if (empty($register->getFields())) {
+            throw new \InvalidArgumentException('fields of register can not be empty');
         }
-
-        foreach ($fields as $field=>$datum) {
-            $fieldIterator++;
-            if (!is_string($field) || !preg_match('/^[a-z]+$/ui',$field)) {
-                $this->errors[] = $rgId.'Name for field #'.$fieldIterator.' must be string (a-z)';
-            }
-            if (!is_string($datum['type']) || !in_array($datum['type'],$this->types)) {
-                $this->errors[] = $rgId.' Parameter type for field #'.$fieldIterator.' must be '.implode(', ',$this->types);
-            }
-            if (isset($datum['transform']) && (!is_string($datum['transform']) || !in_array($datum['transform'], $transforms))) {
-                $this->errors[] = $rgId.' Parameter transform for field #'.$fieldIterator.' must be '.implode(', ',$transforms);
-            }
-            if ((int)$datum['column'] != $datum['column']) {
-                $this->errors[] = $rgId.' Parameter column for field #'.$fieldIterator.' must be integer';
-            }
-        }
-        if (!empty($this->errors)) return;
-        $this->registers[$name]['csv'] = $csv;
-        $this->registers[$name]['key'] = $key;
-        $this->registers[$name]['fields'] = $fields;
+        $this->registers[$name] = $register;
+        return $this;
     }
 
     /**
-     * Add networks.
+     * Remove register.
      *
-     * @param string $csv
-     * @param string $ipFormat
-     * @param integer $firstIp
-     * @param integer $lastIp
-     * @param array $registers
+     * @param string $name
+     * @return $this
      */
-    public function addNetworks($csv,$ipFormat,$firstIp,$lastIp,$registers)
+    public function removeRegister($name)
     {
-        $registersIterator = 0;
-        $this->iterator['network']++;
-        $netId = 'Network #'.$this->iterator['network'];
-        if (!is_string($csv)) {
-            $this->errors[] = $netId.' Parameter csv must be string';
-        } elseif (empty($this->csv[$csv])) {
-            $this->errors[] = $netId.' Need adding csv with function addCSV()';
+        if (isset($this->registers[$name])) {
+            unset($this->registers[$name]);
         }
-        $ipFormats = array('ip','long','inetnum');
-        if (!is_string($ipFormat) || !in_array($ipFormat,$ipFormats)) {
-            $this->errors[] = $netId.' Parameter ipFormat must be '.implode(', ',$ipFormats);
-        }
-        if ((int)$firstIp != $firstIp) {
-            $this->errors[] = $netId.' Parameter firstIp must be integer';
-        }
-        if ((int)$lastIp != $lastIp) {
-            $this->errors[] = $netId.' Parameter lastIp must be integer';
-        }
-        if (empty($registers)) {
-            $this->errors[] = $netId.' Parameter registers can\'t be empty';
-        } elseif (!is_array($registers)) {
-            $this->errors[] = $netId.' Parameter registers must be array Register=>Column';
-        }
-
-        foreach ($registers as $register=>$column) {
-            $registersIterator++;
-            $this->ipData[$register] = $register;
-            if (empty($this->registers[$register])) {
-                $this->errors[] = $netId.' Need adding register #'.$registersIterator.' with function addRegister()';
-            }
-            if ((int)$column != $column) {
-                $this->errors[] = $netId.' Value of register #'.$registersIterator.' must be integer';
-            }
-        }
-        if (!empty($this->errors)) return;
-        $this->networks[] = array(
-            'csv'       => $csv,
-            'ipFormat'  => $ipFormat,
-            'firstIp'   => $firstIp,
-            'lastIp'    => $lastIp,
-            'registers' => $registers,
-        );
+        return $this;
     }
 
     /**
-     * Create database from added sources.
+     * Add relation
      *
-     * @param string $file
+     * @param string $parent
+     * @param string $column
+     * @param string $child
+     * @return $this
+     * @throws \InvalidArgumentException
      */
-    public function create($file)
+    public function addRelation($parent, $column, $child)
     {
-        if (!empty($this->errors)) return null;
-        $tmpDb = $this->temporaryDir . DIRECTORY_SEPARATOR . uniqid().'tmp.sqlite';
+        if (!isset($this->registers[$parent])) {
+            throw new \InvalidArgumentException('parent register not exists');
+        }
+        if (!isset($this->registers[$child])) {
+            throw new \InvalidArgumentException('child register not exists');
+        }
+        if (!is_string($column)) {
+            throw new \InvalidArgumentException('incorrect column');
+        }
+        $this->relations[$parent][$column] = $child;
+        return $this;
+    }
+
+    /**
+     * Get relations.
+     *
+     * @return array
+     */
+    public function getRelations()
+    {
+        return $this->relations;
+    }
+
+    /**
+     * Remove relation.
+     *
+     * @param string $parent
+     * @param string $column
+     * @return $this
+     */
+    public function removeRelation($parent, $column)
+    {
+        if (isset($this->relations[$parent][$column])) {
+            unset($this->registers[$parent][$column]);
+        }
+        return $this;
+    }
+
+    /**
+     * Compile database.
+     *
+     * @param string $filename
+     * @throws \PDOException
+     * @throws \ErrorException
+     */
+    public function compile($filename)
+    {
+        if (!is_string($filename)) {
+            throw new \InvalidArgumentException('incorrect filename');
+        }
+        if (file_exists($filename) && !is_writable($filename)) {
+            throw new \InvalidArgumentException('file not writable');
+        }
+        if (!file_exists($filename) && !is_writable(dirname($filename))) {
+            throw new \InvalidArgumentException('directory not writable');
+        }
+        if (empty($this->time)) $this->time = time();
+
+        $tmpDb = $this->prefix.'.db.sqlite';
         try {
             $this->pdo = new PDO('sqlite:' . $tmpDb);
-            $this->pdo->exec('PRAGMA foreign_keys = 1;PRAGMA encoding = \'UTF-8\';');
+            $this->pdo->exec('PRAGMA foreign_keys = 1;PRAGMA integrity_check = 1;PRAGMA encoding = \'UTF-8\';');
         } catch (PDOException $e) {
-            return;
+            throw  $e;
         }
         $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+
         $this->createTmpDb();
-        $registers = $this->createTmpRegisters();
-        $networks = $this->createTmpNetworks();
 
-        /* Remove temporary SQLite database */
-        if (is_writable($tmpDb)) unlink($tmpDb);
-
-        /* Create header */
-        $header = pack('C', self::VERSION);
-        $header .= pack('C', count($this->meta['registers']));
-        $nameLen = 1;
-        $packLen = strlen($this->meta['networks']['pack']);
-        $len = ($this->meta['networks']['len'] > 255)?'I1':'C1';
-        $itm = ($this->meta['networks']['items'] > 255)?'I1':'C1';
-        foreach ($this->meta['registers'] as $registerName => $register) {
-            if (strlen($registerName) > $nameLen) $nameLen = strlen($registerName);
-            if (strlen($register['pack']) > $packLen) $packLen = strlen($register['pack']);
-            if (($register['len'] > 255) && $len == 'C1') $len = 'I1';
-            if (($register['items'] > 255) && $itm == 'C1') $itm = 'I1';
+        foreach ($this->registers as $table=>$register) {
+            $this->addRegisterInTmpDb($register, $table);
         }
-        $pack = 'A'.$nameLen.'A'.$packLen.$len.$itm;
-        $unpack = 'A'.$nameLen.'name/A'.$packLen.'pack/'.$len.'len/'.$itm.'items';
-        $header .= pack('I',strlen($unpack));
-        $header .= pack('A*',$unpack);
-        $header .= pack('I',strlen(pack($pack,'','',0,0)));
-        foreach ($this->meta['registers'] as $registerName => $register) {
-            $header .= pack($pack,$registerName,$register['pack'],$register['len'],$register['items']);
+
+        $this->addRelationsInTmpDb();
+
+        foreach ($this->networks as $network) {
+            $this->addNetworkInTmpDb($network);
         }
-        $header .= pack($pack,'n',$this->meta['networks']['pack'],$this->meta['networks']['len'],$this->meta['networks']['items']);
-        $header .= $this->packArray('I*',$this->meta['index']);
-        $headerLen = strlen($header);
-        $letter = 'C';
-        if ($headerLen > 255) $letter = 'I';
 
-        /* Create binary database */
-        $database = fopen($file,'w');
-        fwrite($database,'DIT'.$letter.pack($letter,$headerLen).$header);
-
-        /* Write networks to database */
-        $stream = fopen($networks,'rb');
-        stream_copy_to_stream($stream,$database);
-        fclose($stream);
-
-        /* Remove networks temporary file */
-        if (is_writable($networks)) unlink($networks);
-
-        /* Write registers to database */
-        foreach ($registers as $register) {
-            $stream = fopen($register,'rb');
-            stream_copy_to_stream($stream,$database);
-            fclose($stream);
-            /* Remove register temporary file */
-            if (is_writable($register)) unlink($register);
+        foreach ($this->registers as $table=>$register) {
+            $this->compileRegister($table);
         }
-        $time = empty($this->time)?time():$this->time;
-        fwrite($database,pack('N1A128',$time,$this->author));
-        fwrite($database,pack('A*',$this->license));
-        fclose($database);
-        return;
+
+        $this->compileNetwork();
+
+        $this->compileHeader();
+
+        $this->makeFile($filename);
+
+        $this->pdo = null;
+
+        unlink($tmpDb);
+
     }
 
     /**
-     * Create temporary database.
+     * Create tmp sqlite database.
      */
     protected function createTmpDb()
     {
-        if (empty($this->registers)) return;
-        foreach ($this->registers as $table=>$register) {
-            $fields = array('`_pk`', '`_used`');
-            $params = array(':_pk',':_used');
-            $fieldToColumn = array();
-            $fieldToColumn['_pk'] = $register['key'];
-            foreach ($register['fields'] as $f=>$field) {
-                $create[] = '`' . $f . '` TEXT';
-                $fields[] = '`' . $f . '`';
-                $params[] = ':' . $f;
-                $fieldToColumn[$f] = $field['column'];
-            }
-            $sql = 'CREATE '.'TABLE `' . $table . '` (' . implode(',', $fields) . ', CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE);';
-            $sql .= 'CREATE '.'INDEX `_used` ON `'.$table.'` (`_used`);';
-            $this->pdo->exec($sql);
-            $sql = 'INSERT '.'INTO `'.$table.'` (' . implode(',', $fields) . ') VALUES (' . implode(',', $params) . ');';
-            $prepare['insert'][$table] = $this->pdo->prepare($sql);
-            $this->pdo->beginTransaction();
-            $file = $this->csv[$register['csv']];
-            $csv = fopen($file['file'], 'r');
-            $rowIterator = 0;
-            if ($csv !== false) {
-                if (!empty($file['ignoreFirstRows'])) {
-                    for($ignore=0; $ignore < $file['ignoreFirstRows']; $ignore++) {
-                        $row = fgetcsv($csv, 4096, $file['delimiter'], $file['enclosure'], $file['escape']);
-                        unset($row);
-                    }
-                }
-                while ($row = fgetcsv($csv, 4096, $file['delimiter'], $file['enclosure'], $file['escape'])) {
-                    $rowIterator++;
-                    $rowId = ($register['key'] < 0)?$rowIterator:(isset($row[$register['key']]) ? $row[$register['key']] : $rowIterator);
-                    $values = array('_pk'=>$rowId,'_used'=>0);
-                    foreach ($fieldToColumn as $f=>$c) {
-                        $values[$f] = isset($row[$c]) ? $row[$c] : null;
-                        if (isset($register['fields'][$f]['transform']) && is_string($register['fields'][$f]['transform'])) {
-                            switch ($register['fields'][$f]['transform']) {
-                                case 'up': $values[$f] = mb_strtoupper($values[$f]); break;
-                                case 'low': $values[$f] = mb_strtolower($values[$f]); break;
-                            }
-                        }
-                        if (isset($this->registers[$table]['fields'][$f]) && $this->registers[$table]['fields'][$f]['type'] == 'string') {
-                            $l = strlen($values[$f]);
-                            if (!isset($this->registers[$table]['fields'][$f]['len'])) {
-                                $this->registers[$table]['fields'][$f]['len'] = $l;
-                            } elseif ($l > $this->registers[$table]['fields'][$f]['len']) {
-                                $this->registers[$table]['fields'][$f]['len'] = $l;
-                            }
-                        }
-                    }
-                    /**
-                     * @var \PDOStatement $p
-                     */
-                    $p = $prepare['insert'][$table];
-                    $p->execute($values);
-                }
-                fclose($csv);
-            }
-            $this->pdo->commit();
-        }
-
-        $sql = 'CREATE '.'TABLE `_ips` (`id` INTEGER PRIMARY KEY AUTOINCREMENT, `ip` INTEGER,`action` TEXT, `parameter` TEXT, `value` TEXT, `offset` TEXT); CREATE INDEX `ip` ON `_ips` (`ip`); CREATE INDEX `parameter` ON `_ips` (`parameter`); CREATE INDEX `value` ON `_ips` (`value`);';
+        $sql = '
+            CREATE TABLE `_ips` (
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT, 
+                `ip` INTEGER,
+                `action` TEXT, 
+                `parameter` TEXT, 
+                `value` TEXT, 
+                `offset` TEXT
+            );
+            CREATE INDEX `ip` ON `_ips` (`ip`);
+            CREATE INDEX `parameter` ON `_ips` (`parameter`);
+            CREATE INDEX `value` ON `_ips` (`value`);
+        ';
         $this->pdo->exec($sql);
-        $prepareInsertIpsStatement = $this->pdo->prepare('INSERT '.'INTO `_ips` (`ip`,`action`,`parameter`,`value`) VALUES (:ip,:action,:parameter,:value);');
-        $prepareInsertIpsStatement->execute(array(
+        $sql = 'INSERT INTO `_ips` (`ip`,`action`,`parameter`,`value`) VALUES (:ip,:action,:parameter,:value);';
+        $this->insertIps = $this->pdo->prepare($sql);
+        $this->insertIps->execute(array(
             'ip' => 0,
             'action' => 'add',
             'parameter' => NULL,
             'value' => NULL,
         ));
-        foreach ($this->networks as $network) {
-            $file = $this->csv[$network['csv']];
-            $csv = fopen($file['file'], 'r');
-            if ($csv !== false) {
-                if (!empty($file['ignoreFirstRows'])) {
-                    for ($ignore=0; $ignore < $file['ignoreFirstRows']; $ignore++) {
-                        $row = fgetcsv($csv, 4096, $file['delimiter'], $file['enclosure'], $file['escape']);
-                        unset($row);
-                    }
-                }
-                $this->pdo->beginTransaction();
-                while ($row = fgetcsv($csv, 4096, $file['delimiter'], $file['enclosure'], $file['escape'])) {
-                    if (!isset($row[$network['firstIp']])) {
-                        $this->errors[] = $network['csv'].' haven\'t column '.$network['firstIp'];
-                    }
-                    if ($network['lastIp'] != $network['firstIp'] && !isset($row[$network['lastIp']])) {
-                        $this->errors[] = $network['csv'].' haven\'t column '.$network['lastIp'];
-                    }
-                    if (!empty($this->errors)) {
-                        return;
-                    }
-                    $fip = $row[$network['firstIp']];
-                    $lip = $row[$network['lastIp']];
-                    $firstIp = false;
-                    $lastIp = false;
-                    switch ($network['ipFormat']) {
-                        case 'inetnum':
-                            if ($fip == $lip) {
-                                $addrs = $this->parseInetnum($fip);
-                                $firstIp = $addrs['first'];
-                                $lastIp = $addrs['last'];
-                            } else {
-                                $addrs = $this->parseInetnum($fip);
-                                $firstIp = $addrs['first'];
-                                $addrs = $this->parseInetnum($lip);
-                                $lastIp = $addrs['last'];
-                            }
-                            break;
-                        case 'ip':
-                            $firstIp = ip2long($fip);
-                            $lastIp = ip2long($lip);
-                            break;
-                        case 'long':
-                            $firstIp = $fip;
-                            $lastIp = $lip;
-                            break;
-                    }
-                    foreach ($network['registers'] as $register => $column) {
-                        $value = isset($row[$column]) ? $row[$column] : null;
-                        $prepareInsertIpsStatement->execute(array(
-                            'ip' => $firstIp,
-                            'action' => 'add',
-                            'parameter' => $register,
-                            'value' => $value,
-                        ));
-                        $prepareInsertIpsStatement->execute(array(
-                            'ip' => $lastIp + 1,
-                            'action' => 'remove',
-                            'parameter' => $register,
-                            'value' => $value,
-                        ));
-                        if ($value) {
-                            $this->pdo->exec('UPDATE `'.$register.'` SET `_used`=\'1\' WHERE `_pk` = \''.addslashes($value).'\';');
-                        }
-                    }
-                }
-                fclose($csv);
-                $this->pdo->commit();
-            }
-        }
     }
 
     /**
-     * Create temporary registers files.
+     * Create temporary network.
      *
-     * @return array
+     * @param array $data
+     * @throws \ErrorException
      */
-    protected function createTmpRegisters()
+    protected function addNetworkInTmpDb($data)
     {
-        if (empty($this->registers)) return array();
-        $files = array();
-        foreach ($this->registers as $table=>$register) {
-            $offset = 0;
-            $fields = array('`_pk`');
-            $files[$table] = $this->temporaryDir . DIRECTORY_SEPARATOR . $table.'.'.uniqid().'.tmp';
-            $format = array();
-            $empty = array();
-            foreach ($register['fields'] as $f=>$field) {
-                $fields[] = '`'.$f.'`';
-                $empty[$f] = null;
-                switch ($field['type']) {
-                    case 'string':
-                        $format['pack'][] = 'A'.$field['len'];
-                        $format['unpack'][] = 'A'.$field['len'].$f;
-                        break;
-                    case 'small':
-                        $format['pack'][] = 'c';
-                        $format['unpack'][] = 'c'.$f;
-                        break;
-                    case 'int':
-                        $format['pack'][] = 'i';
-                        $format['unpack'][] = 'i'.$f;
-                        break;
-                    case 'long':
-                        $format['pack'][] = 'l';
-                        $format['unpack'][] = 'l'.$f;
-                        break;
-                    case 'float':
-                        $format['pack'][] = 'f';
-                        $format['unpack'][] = 'f'.$f;
-                        break;
-                    case 'double':
-                        $format['pack'][] = 'd';
-                        $format['unpack'][] = 'd'.$f;
-                        break;
-                }
-            }
-            $pack = implode('',$format['pack']);
-            $bin = self::packArray($pack,$empty);
-            $this->meta['registers'][$table]['pack'] = implode('/',$format['unpack']);
-            $this->meta['registers'][$table]['len'] = strlen($bin);
-            $tmpFile = fopen($files[$table],'w');
-            $data = $this->pdo->query('SELECT '.implode(',',$fields).' FROM `'.$table.'` WHERE `_used` = \'1\'');
-            fwrite($tmpFile,$bin);
-            $this->pdo->beginTransaction();
-            while($row = $data->fetch()) {
-                $rowId = $row['_pk'];
-                unset($row['_pk']);
-                $check = 0;
-                foreach ($row as $cell=>$cellValue) {
-                    if (!empty($cellValue)) $check = 1;
-                }
-                $bin = self::packArray($pack,$row);
-                if ($check) {
-                    $offset ++;
-                    fwrite($tmpFile,$bin);
-                }
-                $this->pdo->exec('UPDATE '.'`_ips` SET `offset` =\''.($check?$offset:0).'\' WHERE `parameter` = \''.$table.'\' AND `value`=\''.$rowId.'\';');
-            }
-            $this->meta['registers'][$table]['items'] = $offset;
-            $this->pdo->commit();
-            fclose($tmpFile);
+        /**
+         * @var Network $network
+         */
+        $network = $data['network'];
+        $source = $network->getCsv();
+
+        $firstRow = $network->getFirstRow()-1;
+        $csv = fopen($source['file'], 'r');
+        for($ignore=0; $ignore < $firstRow; $ignore++) {
+            $row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape']);
+            unset($row);
         }
-        return $files;
+        $this->pdo->beginTransaction();
+        while ($row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape'])) {
+            $firstIpColumn = $network->getFistIpColumn()-1;
+            $lastIpColumn = $network->getLastIpColumn()-1;
+            if (!isset($row[$firstIpColumn])) {
+                throw new \ErrorException('have not column with first ip address');
+            }
+            if (!isset($row[$lastIpColumn])) {
+                throw new \ErrorException('have not column with last ip address');
+            }
+            $firstIp = $network->getLongIp($row[$firstIpColumn], false);
+            $lastIp = $network->getLongIp($row[$lastIpColumn], true);
+            $insert = $this->pdo->prepare('INSERT INTO `_ips` (`ip`,`action`,`parameter`,`value`) VALUES (:ip,:action,:parameter,:value);');
+            foreach ($data['map'] as $column=>$register) {
+                $column--;
+                $value = isset($row[$column]) ? $row[$column] : null;
+                $insert->execute(array(
+                    'ip' => $firstIp,
+                    'action' => 'add',
+                    'parameter' => $register,
+                    'value' => $value,
+                ));
+                $insert->execute(array(
+                    'ip' => $lastIp + 1,
+                    'action' => 'remove',
+                    'parameter' => $register,
+                    'value' => $value,
+                ));
+                if (isset($row[$column])) {
+                    $this->meta['networks']['fields'][$register] = null;
+                    $this->setUsed($register, $value);
+                }
+            }
+        }
+        $this->pdo->commit();
+    }
+
+    protected function setUsed($register, $id)
+    {
+        if (!isset($this->prepare['update'][$register])) {
+            $sql = 'UPDATE `'.$register.'` SET `_used`=\'1\' WHERE `_pk` = :pk;';
+            $this->prepare['update'][$register] = $this->pdo->prepare($sql);
+        }
+        $this->prepare['update'][$register]->execute(array('pk'=>$id));
+        if (!empty($this->relations[$register])) {
+            if (isset($this->meta['networks']['fields'][$register])) unset ($this->meta['networks']['fields'][$register]);
+            $sql = 'SELECT 0,`_pk`,`'.implode('`,`',array_keys($this->meta['registers'][$register]['fields'])).'` 
+                FROM `'.$register.'` WHERE `_pk` = \''.addslashes($id).'\'';
+            $res = $this->pdo->query($sql);
+            $row = $res->fetch(PDO::FETCH_NUM);
+            foreach ($this->relations[$register] as $column=>$child) {
+                if (isset($row[$column])) {
+                    $this->setUsed($child, $row[$column]);
+                }
+            }
+        }
     }
 
     /**
-     * Create temporary networks files
+     * Create temporary register.
      *
-     * @return string
+     * @param Register $register
+     * @param string $table
      */
-    protected function createTmpNetworks()
+    protected function addRegisterInTmpDb($register, $table)
+    {
+        $source = $register->getCsv();
+
+        $columns = $register->getFields();
+        $fields = array('`_pk`', '`_used`');
+        $params = array(':_pk',':_used');
+        foreach ($columns as $field=>$data) {
+            $create[] = '`' . $field . '` TEXT';
+            $fields[] = '`' . $field . '`';
+            $params[] = ':' . $field;
+        }
+        $sql = 'CREATE  TABLE `' . $table . '` (' . implode(',', $fields) . ', CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE);';
+        $sql .= 'CREATE INDEX `_used` ON `'.$table.'` (`_used`);';
+        $this->pdo->exec($sql);
+        $sql = 'INSERT INTO `'.$table.'` (' . implode(',', $fields) . ') VALUES (' . implode(',', $params) . ');';
+        $insertStatement = $this->pdo->prepare($sql);
+
+        $firstRow = $register->getFirstRow()-1;
+        $csv = fopen($source['file'], 'r');
+        for($ignore=0; $ignore < $firstRow; $ignore++) {
+            $row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape']);
+            unset($row);
+        }
+        $rowIterator = 0;
+        $idColumn = $register->getId()-1;
+        $this->pdo->beginTransaction();
+        while ($row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape'])) {
+            $rowIterator++;
+            $rowId = $rowIterator;
+            if ($idColumn >= 0 && isset($row[$idColumn])) {
+                $rowId = $row[$idColumn];
+            }
+            $values = array(
+                '_pk'=>$rowId,
+                '_used'=>0
+            );
+            foreach ($columns as $field=>$data) {
+                $column = $data['column']-1;
+                /**
+                 * @var FieldAbstract $type
+                 */
+                $type = $data['type'];
+                $value = isset($row[$column])?$row[$column]:null;
+                $value = $type->getValidValue($value);
+                $values[$field] = $value;
+                $type->updatePackFormat($value);
+            };
+            $insertStatement->execute($values);
+        }
+        $format = array();
+        $empty = array();
+        foreach ($columns as $field=>$data) {
+            /**
+             * @var FieldAbstract $type
+             */
+            $type = $data['type'];
+            $fieldPackFormat = $type->getPackFormat();
+            $format['pack'][] = $fieldPackFormat;
+            $format['unpack'][] = $fieldPackFormat.$field;
+            $empty[$field] = null;
+        };
+        $pack = implode('', $format['pack']);
+        $bin = self::packArray($pack,$empty);
+        $this->meta['registers'][$table]['pack'] = $pack;
+        $this->meta['registers'][$table]['unpack'] = implode('/',$format['unpack']);
+        $this->meta['registers'][$table]['len'] = strlen($bin);
+        $this->meta['registers'][$table]['items'] = 0;
+        $this->meta['registers'][$table]['fields'] = $empty;
+        $this->pdo->commit();
+    }
+
+    /**
+     * Create temporary relations
+     */
+    protected function addRelationsInTmpDb()
+    {
+        $parentType = new StringField();
+        $fieldType = new StringField();
+        $childType = new StringField();
+        foreach ($this->relations as $parent => $networkRelation) {
+            foreach ($networkRelation as $field => $child) {
+                $parentType->updatePackFormat($parent);
+                $childType->updatePackFormat($child);
+                $fieldType->updatePackFormat($field);
+
+                $this->meta['relations']['items'] ++;
+                $this->meta['relations']['data'][] = array(
+                    $parent,
+                    $field,
+                    $child
+                );
+            }
+        }
+        $this->meta['relations']['pack'] = $parentType->getPackFormat()
+            .$fieldType->getPackFormat()
+            .$childType->getPackFormat();
+        $this->meta['relations']['unpack'] = $parentType->getPackFormat().'p/'
+            .$fieldType->getPackFormat().'f/'
+            .$childType->getPackFormat().'c';
+        $this->meta['relations']['len'] = strlen(pack($this->meta['relations']['pack'], null, null, null));
+    }
+
+    /**
+     * Compile register from temporary db
+     *
+     * @param $register
+     */
+    protected function compileRegister($register)
+    {
+        $file = fopen($this->prefix.'.reg.'.$register.'.dat', 'w');
+        $pack = $this->meta['registers'][$register]['pack'];
+        $empty =  $this->meta['registers'][$register]['fields'];
+        $bin = self::packArray($pack, $empty);
+        fwrite($file,$bin);
+        $offset = 0;
+        //$data = $this->pdo->query('SELECT * FROM `'.$register.'` WHERE `_used` = \'1\'');
+        $data = $this->pdo->query('SELECT * FROM `'.$register.'`');
+        $this->pdo->beginTransaction();
+        while($row = $data->fetch()) {
+            $rowId = $row['_pk'];
+            unset($row['_pk']);
+            unset($row['_used']);
+            $check = 0;
+            foreach ($row as $cell=>$cellValue) {
+                if (!empty($cellValue)) $check = 1;
+            }
+            $bin = self::packArray($pack, $row);
+            if ($check) {
+                $offset ++;
+                fwrite($file,$bin);
+            }
+            $this->pdo->exec('UPDATE `_ips` SET `offset` =\''.($check?$offset:0).'\' WHERE `parameter` = \''.$register.'\' AND `value`=\''.$rowId.'\';');
+        }
+        $this->meta['registers'][$register]['items'] = $offset;
+        $this->pdo->commit();
+        fclose($file);
+    }
+
+    /**
+     * Compile network from temporary db
+     */
+    protected function compileNetwork()
     {
         $ip = -1;
-        $fields = array();
+        $this->meta['networks']['pack'] = '';
+        $fields = $this->meta['networks']['fields'];
         $values = array();
-        $format = array();
-        if (empty($this->registers)) return null;
-        foreach ($this->registers as $register=>$null) {
-            $format['pack'][$register] = 'C';
-            $format['unpack'][$register] = 'C'.$register;
-            if ($this->meta['registers'][$register]['items'] > 255) {
-                $format['pack'][$register] = 'I';
-                $format['unpack'][$register] = 'I'.$register;
-            }
-            $fields[$register] = null;
-            $values[$register][] = 0;
+        foreach ($fields as $register=>$null) {
+            $values[$register] = array();
+            $type = new NumericField(0);
+            $type->updatePackFormat($this->meta['registers'][$register]['items']);
+            $pack = $type->getPackFormat();
+            $this->meta['networks']['pack'] .= $pack;
+            $this->meta['networks']['unpack'] .= $pack.$register.'/';
         }
-        $pack = implode('',$format['pack']);
-        $binaryPrevData = self::packArray($pack,$fields);
-        $empty = pack('N',0).$binaryPrevData;
-        $this->meta['networks']['pack'] = implode('/',$format['unpack']);
+        $pack = $this->meta['networks']['pack'];
+        $this->meta['networks']['unpack'] = mb_substr($this->meta['networks']['unpack'],0,-1);
+        $binaryPrevData = self::packArray($pack, $fields);
+        $this->meta['networks']['len'] += strlen($binaryPrevData);
         $offset = 0;
-        $this->meta['networks']['len'] = strlen($empty);
         $this->meta['index'][0] = 0;
-        $file = $this->temporaryDir.DIRECTORY_SEPARATOR.'networks.'.uniqid().'.tmp';
-        $tmpFile = fopen($file,'w');
-        $ipinfo = $this->pdo->query('SELECT * '.'FROM `_ips` ORDER BY `ip` ASC, `action` DESC, `id` ASC;');
-        while ($row = $ipinfo->fetch()) {
+        $file = fopen($this->prefix.'.networks.dat','w');
+        $ipInfo = $this->pdo->query('SELECT * FROM `_ips` ORDER BY `ip` ASC, `action` DESC, `id` ASC;');
+        while ($row = $ipInfo->fetch()) {
             if ($row['ip'] !== $ip) {
                 foreach ($values as $param=>$v) {
                     if (!empty($param)) $fields[$param] = array_pop($v);
                 }
-                $binaryData = self::packArray($pack,$fields);
+                $binaryData = self::packArray($pack, $fields);
                 if ($binaryData !== $binaryPrevData || empty($ip)) {
-                    fwrite($tmpFile, pack('N', $ip) . $binaryData);
+                    fwrite($file, pack('N', $ip) . $binaryData);
                     $octet = (int)long2ip($ip);
                     if (!isset($this->meta['index'][$octet])) $this->meta['index'][$octet] = $offset;
                     $offset++;
@@ -768,7 +655,7 @@ class Wizard
                 $octet = (int)long2ip($ip);
                 if (!isset($this->meta['index'][$octet])) $this->meta['index'][$octet] = $offset;
                 $offset++;
-                fwrite($tmpFile, pack('N', $ip) . $binaryData);
+                fwrite($file, pack('N', $ip) . $binaryData);
             }
         }
         $this->meta['networks']['items'] = $offset;
@@ -776,9 +663,174 @@ class Wizard
             if (!isset($this->meta['index'][$i])) $this->meta['index'][$i] = $this->meta['index'][$i-1];
         }
         ksort($this->meta['index']);
-        fclose($tmpFile);
+        fclose($file);
         unset($ip);
-        return $file;
+    }
+
+    /**
+     * Compile header.
+     */
+    protected function compileHeader()
+    {
+        /*
+         * Ipstack format version.
+         */
+        $header = pack('C', self::FORMAT_VERSION);
+
+        /*
+         * Registers count.
+         */
+        $header .= pack('C', count($this->meta['registers']));
+
+        $nameLen = 1;
+        $packLen = strlen($this->meta['networks']['pack']);
+        $lenType = new NumericField();
+        $lenType->updatePackFormat($this->meta['networks']['len']);
+        $itmType = new NumericField();
+        $itmType->updatePackFormat($this->meta['networks']['items']);
+        foreach ($this->meta['registers'] as $registerName => $register) {
+            if (strlen($registerName) > $nameLen) $nameLen = strlen($registerName);
+            if (strlen($register['unpack']) > $packLen) $packLen = strlen($register['unpack']);
+            $lenType->updatePackFormat($register['len']);
+            $itmType->updatePackFormat($register['items']);
+        }
+        $len = $lenType->getPackFormat();
+        $itm = $itmType->getPackFormat();
+
+        $pack = 'A'.$nameLen.'A'.$packLen.$len.$itm;
+        $unpack = 'A'.$nameLen.'name/A'.$packLen.'pack/'.$len.'len/'.$itm.'items';
+
+        /*
+         * Size of registers definition unpack format.
+         */
+        $header .= pack('S',strlen($unpack));
+
+        /*
+         * Size of registers definition row.
+         */
+        $header .= pack('S',strlen(pack($pack,'','',0,0)));
+
+        /*
+         * Relations count.
+         */
+        $header .= pack('C', $this->meta['relations']['items']);
+
+        /*
+         * Size of relations definition unpack format.
+         */
+        $lenRelationsFormat = strlen($this->meta['relations']['unpack']);
+        $header .= pack('C', $lenRelationsFormat);
+
+        /*
+         * Size of relation definition row.
+         */
+        $header .= pack('S', $this->meta['relations']['len']);
+
+        /*
+         * Relation unpack format (parent, column, child).
+         */
+        $header .= $this->meta['relations']['unpack'];
+
+        /*
+         * Registers metadata unpack format.
+         */
+        $header .= pack('A*',$unpack);
+
+        /*
+         * Relations.
+         */
+        foreach ($this->meta['relations']['data'] as $relation) {
+            $header .= self::packArray(
+                $this->meta['relations']['pack'],
+                $relation
+            );
+        }
+
+        /**
+         * Registers metadata.
+         */
+        foreach ($this->meta['registers'] as $registerName => $register) {
+            $header .= pack(
+                $pack,
+                $registerName,
+                $register['unpack'],
+                $register['len'],
+                $register['items']
+            );
+        }
+
+        /*
+         * Networks metadata.
+         */
+        $header .= pack(
+            $pack,
+            'n',
+            $this->meta['networks']['unpack'],
+            $this->meta['networks']['len'],
+            $this->meta['networks']['items']
+        );
+
+        /*
+         * Index of first octets.
+         */
+        $header .= $this->packArray('I*',$this->meta['index']);
+
+        /*
+         * Control word and header size.
+         */
+        $headerLength = strlen($header);
+        $header = 'ISD'.pack('S', $headerLength).$header;
+
+        $file = fopen($this->prefix.'.header', 'w');
+        fwrite($file, $header);
+        fclose($file);
+    }
+
+    /**
+     * Make file.
+     *
+     * @param string $fileName
+     */
+    protected function makeFile($fileName)
+    {
+        /*
+         * Create binary database.
+         */
+        $tmp = $this->prefix.'.database.dat';
+        $database = fopen($tmp,'w');
+
+        /*
+         * Write header to database.
+         */
+        $file = $this->prefix.'.header';
+        $stream = fopen($file, 'rb');
+        stream_copy_to_stream($stream, $database);
+        fclose($stream);
+        if (is_writable($file)) unlink($file);
+
+        /*
+         * Write networks to database.
+         */
+        $file = $this->prefix.'.networks.dat';
+        $stream = fopen($file, 'rb');
+        stream_copy_to_stream($stream, $database);
+        fclose($stream);
+        if (is_writable($file)) unlink($file);
+
+        foreach ($this->meta['registers'] as $register=>$data) {
+            $file = $this->prefix.'.reg.'.$register.'.dat';
+            $stream = fopen($file, 'rb');
+            stream_copy_to_stream($stream, $database);
+            fclose($stream);
+            if (is_writable($file)) unlink($file);
+        }
+
+        $time = empty($this->time)?time():$this->time;
+        fwrite($database,pack('I1A128',$time,$this->author));
+        fwrite($database,pack('A*',$this->license));
+        fclose($database);
+
+        rename($tmp, $fileName);
     }
 
     /**
@@ -793,39 +845,5 @@ class Wizard
         $packParams = array_values($array);
         array_unshift($packParams,$format);
         return call_user_func_array('pack',$packParams);
-    }
-
-    /**
-     * Get first and last IP addresses by prefix or inetnum
-     *
-     * @param string $prefixOrInetnum
-     * @return array
-     */
-    public static function parseInetnum($prefixOrInetnum)
-    {
-        $result = ['first'=>null,'last'=>null];
-        if (strpos($prefixOrInetnum,'-') !== false) {
-            $d = explode('-',$prefixOrInetnum);
-            $result['first'] = trim($d[0]);
-            $result['last'] = trim($d[1]);
-        }
-        if (strpos($prefixOrInetnum,'/') !== false) {
-            $d = explode('/',$prefixOrInetnum);
-            $ipnum = ip2long((string) $d[0]);
-            $prefix = filter_var($d[1], \FILTER_VALIDATE_INT, [
-                'options' => ['min_range' => 0, 'max_range' => 32]
-            ]);
-            if (false === $ipnum or false === $prefix) {
-                return $result;
-            }
-            $netsize = 1 << (32 - $prefix);
-            $end_num = $ipnum + $netsize - 1;
-            if ($end_num >= (1 << 32)) {
-                return $result;
-            }
-            $result['first'] = $ipnum;
-            $result['last'] = $end_num;
-        }
-        return $result;
     }
 }
