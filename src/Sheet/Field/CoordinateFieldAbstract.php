@@ -6,8 +6,7 @@ namespace Ipstack\Wizard\Sheet\Field;
  * Class CoordinateFieldAbstract
  *
  * @property string $packFormatKey
- * @property double $min
- * @property double $max
+ * @property double $limit
 
  */
 abstract class CoordinateFieldAbstract extends FieldAbstract
@@ -25,24 +24,32 @@ abstract class CoordinateFieldAbstract extends FieldAbstract
     /**
      * @var double
      */
-    protected $min;
-
-    /**
-     * @var double
-     */
-    protected $max;
+    protected $limit;
 
     /**
      * Get valid value.
      *
      * @param mixed $value
-     * @return int|float|double
+     * @return double
      */
     public function getValidValue($value)
     {
-        if ($this->min !== null && $value < $this->min) $value = $this->min;
-        if ($this->max !== null && $value > $this->max) $value = $this->max;
-        $value = round((float)$value, 4, \PHP_ROUND_HALF_DOWN);
+        $value = (double)$value;
+        $value = intval($value * 10000);
+        if ($this->limit !== null) {
+            $limit = $this->limit*10000;
+            if ($value < -$limit) {
+                $value += $limit;
+                $value = ($value % ($limit*2));
+                $value += $limit;
+            }
+            if ($value > $limit) {
+                $value -= $limit;
+                $value = ($value % ($limit*2));
+                $value -= $limit;
+            }
+        }
+        $value /= 10000;
         return $value;
     }
 
