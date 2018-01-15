@@ -15,7 +15,7 @@ abstract class CoordinateFieldAbstract extends FieldAbstract
     /**
      * @var string
      */
-    protected $packFormatKey = 'd';
+    protected $packFormatKey = 'f';
 
     /**
      * @var null
