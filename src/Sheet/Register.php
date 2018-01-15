@@ -1,8 +1,8 @@
 <?php
 
-namespace Ipstack\Wizard;
+namespace Ipstack\Wizard\Sheet;
 
-use Ipstack\Wizard\Fields\FieldAbstract;
+use Ipstack\Wizard\Sheet\Field\FieldAbstract;
 
 /**
  * Class Register

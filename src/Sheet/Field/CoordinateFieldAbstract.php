@@ -1,6 +1,6 @@
 <?php
 
-namespace Ipstack\Wizard\Fields;
+namespace Ipstack\Wizard\Sheet\Field;
 
 /**
  * Class CoordinateFieldAbstract

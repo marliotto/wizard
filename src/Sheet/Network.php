@@ -1,6 +1,6 @@
 <?php
 
-namespace Ipstack\Wizard;
+namespace Ipstack\Wizard\Sheet;
 
 /**
  * Class Network.
