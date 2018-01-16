@@ -6,6 +6,7 @@ namespace Ipstack\Wizard\Sheet\Field;
  * Class CoordinateFieldAbstract
  *
  * @property string $packFormatKey
+ * @property null $packFormatLength
  * @property double $limit
 
  */
@@ -51,15 +52,5 @@ abstract class CoordinateFieldAbstract extends FieldAbstract
         }
         $value /= 10000;
         return $value;
-    }
-
-    /**
-     * Get format for pack() function.
-     *
-     * @return string
-     */
-    public function getPackFormat()
-    {
-        return $this->packFormatKey;
     }
 }
