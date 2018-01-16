@@ -16,7 +16,7 @@ class RegisterTest extends TestCase
     /**
      * @var string
      */
-    protected $registerCsv = \IPSTACK_TEST_CSV_DIR.DIRECTORY_SEPARATOR.'simple'.DIRECTORY_SEPARATOR.'countries.csv';
+    protected $registerCsv = \IPSTACK_TEST_CSV_DIR.DIRECTORY_SEPARATOR.'simple'.DIRECTORY_SEPARATOR.'intervals.csv';
 
     /**
      * Create object with incorrect filename.

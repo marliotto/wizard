@@ -34,21 +34,11 @@ class DatabaseTest extends TestCase
             mkdir($tmpDir);
         }
 
-        $countries = (new Register($csvDir.DIRECTORY_SEPARATOR.'countries.csv'))
+        $intervals = (new Register($csvDir.DIRECTORY_SEPARATOR.'intervals.csv'))
             ->setCsv('UTF-8')
             ->setFirstRow(2)
             ->setId(1)
-            ->addField('code', 2, new StringField(StringField::TRANSFORM_LOWER, 2))
-            ->addField('name', 3, new StringField())
-        ;
-        $cities = (new Register($csvDir.DIRECTORY_SEPARATOR.'cities.csv'))
-            ->setCsv('UTF-8')
-            ->setFirstRow(2)
-            ->setId(1)
-            ->addField('name', 2, new StringField(0))
-            ->addField('countryId', 3, new NumericField(0))
-            ->addField('latitude', 4, new LatitudeField())
-            ->addField('longitude', 5, new LongitudeField())
+            ->addField('name', 2, new StringField())
         ;
         $network = (new Network($csvDir.DIRECTORY_SEPARATOR.'networks.csv', Network::IP_TYPE_ADDRESS, 1, 2))
             ->setCsv('UTF-8')
@@ -59,13 +49,11 @@ class DatabaseTest extends TestCase
             ->setAuthor($author)
             ->setTime($time)
             ->setLicense($license)
-            ->addRegister('city', $cities)
-            ->addRegister('country', $countries)
-            ->addRelation('city', 'countryId', 'country')
+            ->addRegister('interval', $intervals)
             ->addNetwork(
                 $network,
                 array(
-                    3 => 'city',
+                    3 => 'interval',
                 )
             )
         ;
@@ -74,18 +62,26 @@ class DatabaseTest extends TestCase
         $db = $this->parseFile($dbFile);
 
         $this->assertSame('ISD', $db['header']['control']);
-        $this->assertSame('A2code/A10name', $db['meta']['registers']['country']['pack']);
-        $this->assertSame(12, $db['meta']['registers']['country']['len']);
-        $this->assertSame(3, $db['meta']['registers']['country']['items']);
-        $this->assertSame('A15name/CcountryId/flatitude/flongitude', $db['meta']['registers']['city']['pack']);
-        $this->assertSame(24, $db['meta']['registers']['city']['len']);
-        $this->assertSame(5, $db['meta']['registers']['city']['items']);
-        $this->assertSame('Ccity', $db['meta']['networks']['pack']);
+        $this->assertSame(1, $db['header']['RGC']);
+        $this->assertSame(0, $db['header']['RLC']);
+        $this->assertSame('A10name', $db['meta']['registers']['interval']['pack']);
+        $this->assertSame(10, $db['meta']['registers']['interval']['len']);
+        $this->assertSame(4, $db['meta']['registers']['interval']['items']);
+        $this->assertSame('Cinterval', $db['meta']['networks']['pack']);
         $this->assertSame(5, $db['meta']['networks']['len']);
-        $this->assertSame(7, $db['meta']['networks']['items']);
-        $this->assertSame('country', $db['relations'][0]['c']);
-        $this->assertSame('country', $db['relations'][0]['c']);
-        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame(4, $db['meta']['networks']['items']);
+        $this->assertSame(0, $db['index'][0]);
+        $this->assertSame(0, $db['index'][63]);
+        $this->assertSame(1, $db['index'][64]);
+        $this->assertSame(1, $db['index'][65]);
+        $this->assertSame(1, $db['index'][127]);
+        $this->assertSame(2, $db['index'][128]);
+        $this->assertSame(2, $db['index'][129]);
+        $this->assertSame(2, $db['index'][171]);
+        $this->assertSame(3, $db['index'][172]);
+        $this->assertSame(3, $db['index'][173]);
+        $this->assertSame(3, $db['index'][255]);
+        $this->assertArrayNotHasKey(256, $db['index']);
         $this->assertSame($time, $db['time']);
         $this->assertSame($author, $db['author']);
         $this->assertSame($license, $db['license']);
