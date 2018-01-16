@@ -18,7 +18,7 @@ class LatitudeFieldTest extends TestCase
     {
         $type = new LatitudeField();
         $latitude = $type->getValidValue(91.5);
-        $this->assertSame(-88.5, $latitude);
+        $this->assertSame(88.5, $latitude);
         unset($type);
     }
 
@@ -29,7 +29,7 @@ class LatitudeFieldTest extends TestCase
     {
         $type = new LatitudeField();
         $latitude = $type->getValidValue(175.05);
-        $this->assertSame(-4.95, $latitude);
+        $this->assertSame(4.95, $latitude);
         unset($type);
     }
 
@@ -40,7 +40,7 @@ class LatitudeFieldTest extends TestCase
     {
         $type = new LatitudeField();
         $latitude = $type->getValidValue(-91.5);
-        $this->assertSame(88.5, $latitude);
+        $this->assertSame(-88.5, $latitude);
         unset($type);
     }
 
@@ -51,7 +51,7 @@ class LatitudeFieldTest extends TestCase
     {
         $type = new LatitudeField();
         $latitude = $type->getValidValue(-175.05);
-        $this->assertSame(4.95, $latitude);
+        $this->assertSame(-4.95, $latitude);
         unset($type);
     }
 
