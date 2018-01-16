@@ -6,10 +6,10 @@
 
 ### Additional info
 
-| Q                | A
-| ---------------- | ---
-| Wizard version   | 1.0.?
-| PHP version      | 
-| Operating system |
+|Q|A|
+|---|---|
+|Wizard version|2.0.?|
+|PHP version|?| 
+|Operating system|?|
 
 ### Add your binary database file in attacnments
