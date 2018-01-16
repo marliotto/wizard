@@ -230,13 +230,18 @@ class DatabaseTest extends TestCase
                 )
             )
         ;
-        $wizard->compile($dbFile);
-
-        $tmpFiles = glob($tmpDir.DIRECTORY_SEPARATOR.'*');
-        foreach ($tmpFiles as $tmpFile) {
-            unlink($tmpFile);
+        try {
+            $wizard->compile($dbFile);
+        } catch (\ErrorException $e) {
+            $tmpFiles = glob($tmpDir.DIRECTORY_SEPARATOR.'*');
+            foreach ($tmpFiles as $tmpFile) {
+                unlink($tmpFile);
+            }
+            rmdir($tmpDir);
+            throw $e;
         }
-        rmdir($tmpDir);
+
+
     }
 
     protected function parseFile($dbFile)
