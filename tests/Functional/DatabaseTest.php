@@ -93,6 +93,88 @@ class DatabaseTest extends TestCase
         rmdir($tmpDir);
     }
 
+
+    /**
+     * Compile relation database.
+     *
+     * @throws \ErrorException
+     */
+    public function testRelation()
+    {
+        $time = time();
+        $author = 'Unit Test';
+        $license = 'Test License';
+        $tmpDir = IPSTACK_TEST_TMP_DIR;
+        $csvDir = IPSTACK_TEST_CSV_DIR.DIRECTORY_SEPARATOR.'relation';
+        $dbFile = IPSTACK_TEST_TMP_DIR.DIRECTORY_SEPARATOR.'ipstack.relation.dat';
+
+        if (!is_dir($tmpDir)) {
+            mkdir($tmpDir);
+        }
+
+        $countries = (new Register($csvDir.DIRECTORY_SEPARATOR.'countries.csv'))
+            ->setCsv('UTF-8')
+            ->setFirstRow(2)
+            ->setId(1)
+            ->addField('code', 2, new StringField(StringField::TRANSFORM_LOWER, 2))
+            ->addField('name', 3, new StringField())
+        ;
+        $cities = (new Register($csvDir.DIRECTORY_SEPARATOR.'cities.csv'))
+            ->setCsv('UTF-8')
+            ->setFirstRow(2)
+            ->setId(1)
+            ->addField('name', 2, new StringField(0))
+            ->addField('countryId', 3, new NumericField(0))
+            ->addField('latitude', 4, new LatitudeField())
+            ->addField('longitude', 5, new LongitudeField())
+        ;
+        $network = (new Network($csvDir.DIRECTORY_SEPARATOR.'networks.csv', Network::IP_TYPE_ADDRESS, 1, 2))
+            ->setCsv('UTF-8')
+            ->setFirstRow(2)
+        ;
+
+        $wizard = (new Wizard($tmpDir))
+            ->setAuthor($author)
+            ->setTime($time)
+            ->setLicense($license)
+            ->addRegister('city', $cities)
+            ->addRegister('country', $countries)
+            ->addRelation('city', 'countryId', 'country')
+            ->addNetwork(
+                $network,
+                array(
+                    3 => 'city',
+                )
+            )
+        ;
+        $wizard->compile($dbFile);
+
+        $db = $this->parseFile($dbFile);
+
+        $this->assertSame('ISD', $db['header']['control']);
+        $this->assertSame('A2code/A10name', $db['meta']['registers']['country']['pack']);
+        $this->assertSame(12, $db['meta']['registers']['country']['len']);
+        $this->assertSame(3, $db['meta']['registers']['country']['items']);
+        $this->assertSame('A15name/CcountryId/flatitude/flongitude', $db['meta']['registers']['city']['pack']);
+        $this->assertSame(24, $db['meta']['registers']['city']['len']);
+        $this->assertSame(5, $db['meta']['registers']['city']['items']);
+        $this->assertSame('Ccity', $db['meta']['networks']['pack']);
+        $this->assertSame(5, $db['meta']['networks']['len']);
+        $this->assertSame(7, $db['meta']['networks']['items']);
+        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertSame($time, $db['time']);
+        $this->assertSame($author, $db['author']);
+        $this->assertSame($license, $db['license']);
+
+        $tmpFiles = glob($tmpDir.DIRECTORY_SEPARATOR.'*');
+        foreach ($tmpFiles as $tmpFile) {
+            unlink($tmpFile);
+        }
+        rmdir($tmpDir);
+    }
+
     protected function parseFile($dbFile)
     {
         $result = array(
