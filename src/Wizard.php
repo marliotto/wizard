@@ -308,6 +308,8 @@ class Wizard
         }
         if (empty($this->time)) $this->time = time();
 
+        $this->checkRelations();
+
         $tmpDb = $this->prefix.'.db.sqlite';
         try {
             $this->pdo = new PDO('sqlite:' . $tmpDb);
@@ -677,6 +679,22 @@ class Wizard
         ksort($this->meta['index']);
         fclose($file);
         unset($ip);
+    }
+
+    /**
+     * Check for recursive relations.
+     *
+     * @throws \ErrorException
+     */
+    protected function checkRelations()
+    {
+        foreach ($this->relations as $parent=>$relation) {
+            foreach ($relation as $field=>$child) {
+                if (isset($this->relations[$child]) && in_array($parent, $this->relations[$child])) {
+                    throw new \ErrorException('relations can not be recursive');
+                }
+            }
+        }
     }
 
     /**
