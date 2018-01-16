@@ -329,6 +329,8 @@ class Wizard
             $this->addNetworkInTmpDb($network);
         }
 
+        $this->setRelationsUsed();
+
         foreach ($this->registers as $table=>$register) {
             $this->compileRegister($table);
         }
@@ -438,18 +440,6 @@ class Wizard
             $this->prepare['update'][$register] = $this->pdo->prepare($sql);
         }
         $this->prepare['update'][$register]->execute(array('pk'=>$id));
-        if (!empty($this->relations[$register])) {
-            if (isset($this->meta['networks']['fields'][$register])) unset ($this->meta['networks']['fields'][$register]);
-            $sql = 'SELECT 0,`_pk`,`'.implode('`,`',array_keys($this->meta['registers'][$register]['fields'])).'` 
-                FROM `'.$register.'` WHERE `_pk` = \''.addslashes($id).'\'';
-            $res = $this->pdo->query($sql);
-            $row = $res->fetch(PDO::FETCH_NUM);
-            foreach ($this->relations[$register] as $column=>$child) {
-                if (isset($row[$column])) {
-                    $this->setUsed($child, $row[$column]);
-                }
-            }
-        }
     }
 
     /**
@@ -470,7 +460,7 @@ class Wizard
             $fields[] = '`' . $field . '`';
             $params[] = ':' . $field;
         }
-        $sql = 'CREATE  TABLE `' . $table . '` (' . implode(',', $fields) . ', CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE);';
+        $sql = 'CREATE TABLE `' . $table . '` (' . implode(',', $fields) . ', CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE);';
         $sql .= 'CREATE INDEX `_used` ON `'.$table.'` (`_used`);';
         $this->pdo->exec($sql);
         $sql = 'INSERT INTO `'.$table.'` (' . implode(',', $fields) . ') VALUES (' . implode(',', $params) . ');';
@@ -531,6 +521,29 @@ class Wizard
     }
 
     /**
+     * Set used flag for relations
+     */
+    protected function setRelationsUsed()
+    {
+        $parents = array_keys($this->meta['networks']['fields']);
+        while (!empty(count($parents))) {
+            $parent = array_shift($parents);
+            if (!empty($this->relations[$parent])) {
+                foreach ($this->relations[$parent] as $field => $child) {
+                    $parents[] = $child;
+                    $sql = 'SELECT `'.$field.'` FROM `'.$parent.'` GROUP BY `'.$field.'`;';
+                    $res = $this->pdo->query($sql);
+                    $this->pdo->beginTransaction();
+                    while ($row = $res->fetch()) {
+                        $this->setUsed($child, $row[$field]);
+                    }
+                    $this->pdo->commit();
+                }
+            }
+        };
+    }
+
+    /**
      * Create temporary relations
      */
     protected function addRelationsInTmpDb()
@@ -574,8 +587,7 @@ class Wizard
         $bin = self::packArray($pack, $empty);
         fwrite($file,$bin);
         $offset = 0;
-        //$data = $this->pdo->query('SELECT * FROM `'.$register.'` WHERE `_used` = \'1\'');
-        $data = $this->pdo->query('SELECT * FROM `'.$register.'`');
+        $data = $this->pdo->query('SELECT * FROM `'.$register.'` WHERE `_used` = \'1\'');
         $this->pdo->beginTransaction();
         while($row = $data->fetch()) {
             $rowId = $row['_pk'];
@@ -682,23 +694,27 @@ class Wizard
          */
         $header .= pack('C', count($this->meta['registers']));
 
-        $nameLen = 1;
-        $packLen = strlen($this->meta['networks']['pack']);
+        $rnmType = new StringField();
+        $rnmType->updatePackFormat('n');
+        $pckType = new StringField();;
+        $pckType->updatePackFormat($this->meta['networks']['unpack']);
         $lenType = new NumericField();
         $lenType->updatePackFormat($this->meta['networks']['len']);
         $itmType = new NumericField();
         $itmType->updatePackFormat($this->meta['networks']['items']);
         foreach ($this->meta['registers'] as $registerName => $register) {
-            if (strlen($registerName) > $nameLen) $nameLen = strlen($registerName);
-            if (strlen($register['unpack']) > $packLen) $packLen = strlen($register['unpack']);
+            $rnmType->updatePackFormat($registerName);
+            $pckType->updatePackFormat($register['unpack']);
             $lenType->updatePackFormat($register['len']);
             $itmType->updatePackFormat($register['items']);
         }
         $len = $lenType->getPackFormat();
         $itm = $itmType->getPackFormat();
+        $pck = $pckType->getPackFormat();
+        $rnm = $rnmType->getPackFormat();
 
-        $pack = 'A'.$nameLen.'A'.$packLen.$len.$itm;
-        $unpack = 'A'.$nameLen.'name/A'.$packLen.'pack/'.$len.'len/'.$itm.'items';
+        $pack = $rnm.$pck.$len.$itm;
+        $unpack =$rnm.'name/'.$pck.'pack/'.$len.'len/'.$itm.'items';
 
         /*
          * Size of registers definition unpack format.
@@ -739,11 +755,13 @@ class Wizard
         /*
          * Relations.
          */
-        foreach ($this->meta['relations']['data'] as $relation) {
-            $header .= self::packArray(
-                $this->meta['relations']['pack'],
-                $relation
-            );
+        if (!empty($this->meta['relations']['data'])) {
+            foreach ($this->meta['relations']['data'] as $relation) {
+                $header .= self::packArray(
+                    $this->meta['relations']['pack'],
+                    $relation
+                );
+            }
         }
 
         /**
