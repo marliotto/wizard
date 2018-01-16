@@ -46,8 +46,11 @@
 # 3. Using
 
 1. Prepare files describing the intervals and registers from which you are going to compile a binary database. These files should look like a relational database table.
-    ###### for example
+    
+    For example
+    
     Intervals file `/path/to/cvs/networks.csv`
+    
     ```text
     first_ip,last_ip,register_id
     "0.0.0.0","63.255.255.255",1
@@ -55,7 +58,9 @@
     "128.0.0.0","191.255.255.255",3
     "192.0.0.0","255.255.255.255",4
     ```
+    
     Register file `/path/to/cvs/register.csv`.
+    
     ```text
     Unused row. e.g. copiryght. Second row is a header, also unused.
     id,interval_name
@@ -65,13 +70,16 @@
     4,"Interval 4"
     5,"Unused interval"
     ```
+    
 1. Initialization wizard
+    
     ```php
     $tmpDir = 'path/to/dir/for/temporary/files';
     $wizard = new \Ipstack\Wizard\Wizard($tmpDir);
     ```
     
 1. Set creation time.
+    
     ```php
     /**
      * $time - time in unixstamp format.
@@ -80,6 +88,7 @@
     ```
 
 1. Set author information
+    
     ```php
     /**
      * $author can be a string no longer than 64 characters.
@@ -89,6 +98,7 @@
     ```
 
 1. Set license of database
+    
     ```php
     /**
      * $license may be the name of a public license or the text of a license. The length is unlimited.
@@ -98,6 +108,7 @@
     ```
 
 1. Add registers
+    
     ```php
     $intervals = (new Register('/path/to/cvs/register.csv'))
         ->setCsv('UTF-8')
@@ -117,6 +128,7 @@
     ```
 
 1. Add networks and registers to database
+    
     ```php
     $wizard
         ->addRegister('interval', $intervals)
@@ -129,9 +141,11 @@
     ```
 
 1. Run compile database
+    
     ```php
     $wizard->compile($dbFile);
     ```
+    
     Wait and use!
 
 # 4. Relations
