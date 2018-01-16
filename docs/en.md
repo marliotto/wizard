@@ -1,8 +1,8 @@
 # 1. Install
 
 ## 1.1. Requirements
-* PHP 5.3 or later
-* PHP Extension PDO with SQLite support
+* PHP 5.3 or later;
+* PHP Extension PDO with SQLite support.
 
 ## 1.2. Install
 1. Add package to requires:
@@ -16,7 +16,7 @@
     ```
 # 2. Database format (version 2)
 
-|Size|Caption|
+|Size of block, bytes|Description|
 |---|---|
 |3|A control word that confirms the authenticity of the file. It is always equal to ISD|
 |2|Header size|
@@ -32,13 +32,13 @@
 |$RLC*$LRD|Relations|
 |$RGC*$RGD|Registers metadata|
 |$RGD|Networks metadata|
-|1024|Index of first octets|
+|1024|Index|
 |?|Database of intervals|
 |?|Database of Register 1|
 |?|Database of Register 2|
 |...|...|
 |?|Database of Register $RGC|
-|4|Unixtime of database creation time|
+|4|Unixtime of database actuality time|
 |128|Author|
 |?|Database license|
 
@@ -47,17 +47,7 @@
 
 1. Prepare files describing the intervals and registers from which you are going to compile a binary database. These files should look like a relational database table.
     
-    For example
-    
-    Intervals file `/path/to/cvs/networks.csv`
-    
-    ```text
-    first_ip,last_ip,register_id
-    "0.0.0.0","63.255.255.255",1
-    "64.0.0.0","127.255.255.255",2
-    "128.0.0.0","191.255.255.255",3
-    "192.0.0.0","255.255.255.255",4
-    ```
+    For example:
     
     Register file `/path/to/cvs/register.csv`.
     
@@ -71,14 +61,24 @@
     5,"Unused interval"
     ```
     
-1. Initialization wizard
+    Intervals file `/path/to/cvs/networks.csv`.
+    
+    ```text
+    first_ip,last_ip,register_id
+    "0.0.0.0","63.255.255.255",1
+    "64.0.0.0","127.255.255.255",2
+    "128.0.0.0","191.255.255.255",3
+    "192.0.0.0","255.255.255.255",4
+    ```
+    
+1. Initialization wizard.
     
     ```php
     $tmpDir = 'path/to/dir/for/temporary/files';
     $wizard = new \Ipstack\Wizard\Wizard($tmpDir);
     ```
     
-1. Set creation time.
+1. Set actuality time.
     
     ```php
     /**
@@ -87,27 +87,27 @@
     $wizard->setTime(1507638600); // 2017/10/10 15:30:00
     ```
 
-1. Set author information
+1. Set author information.
     
     ```php
     /**
-     * $author can be a string no longer than 64 characters.
+     * $author - can be a string no longer than 64 characters.
      */
     $author = 'Name Surname';
     $wizard->setAuthor($author);
     ```
 
-1. Set license of database
+1. Set license of database.
     
     ```php
     /**
-     * $license may be the name of a public license or the text of a license. The length is unlimited.
+     * $license - may be the name of a public license or the text of a license. The length is unlimited.
      */
     $license = 'MIT';
     $wizard->setLicense($license);
     ```
 
-1. Add registers
+1. Define registers.
     
     ```php
     $intervals = (new Register('/path/to/cvs/register.csv'))
@@ -118,7 +118,7 @@
     ;
     ```
 
-1. Add networks
+1. Define networks.
 
     ```php
     $network = (new Network('/path/to/cvs/networks.csv', Network::IP_TYPE_ADDRESS, 1, 2))
@@ -127,7 +127,7 @@
     ;
     ```
 
-1. Add networks and registers to database
+1. Add networks and registers to database.
     
     ```php
     $wizard
@@ -140,7 +140,7 @@
         );
     ```
 
-1. Run compile database
+1. Run compile database.
     
     ```php
     $wizard->compile($dbFile);
@@ -152,9 +152,9 @@
 
 If you need relations, use method addRelation() of Wizard object.
 
-For example
+For example:
 
-`/path/to/coutries.csv`
+`/path/to/countries.csv`
 
 ```text
 id,country_code,country_name
@@ -191,7 +191,7 @@ first_ip,last_ip,city
 ```php
 <?php
 require_once('vendor/autoload.php');
-$countries = (new Register('/path/to/coutries.csv'))
+$countries = (new Register('/path/to/countries.csv'))
     ->setCsv('UTF-8')
     ->setFirstRow(2)
     ->setId(1)
