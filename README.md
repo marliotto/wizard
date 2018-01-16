@@ -1,5 +1,5 @@
-[![Latest Stable Version](https://img.shields.io/packagist/v/ipstack/wizard.svg?style=flat-square)](https://packagist.org/packages/ipstack/wizard)
-[![Total Downloads](https://img.shields.io/packagist/dt/ipstack/wizard.svg?style=flat-square)](https://packagist.org/packages/ipstack/wizard/stats)
+[![Packagist](https://img.shields.io/packagist/v/ipstack/wizard.svg?style=flat-square)](https://packagist.org/packages/ipstack/wizard)
+[![Downloads](https://img.shields.io/packagist/dt/ipstack/wizard.svg?style=flat-square)](https://packagist.org/packages/ipstack/wizard/stats)
 [![License](https://img.shields.io/packagist/l/ipstack/wizard.svg?style=flat-square)](https://github.com/ipstack/wizard/blob/master/LICENSE)
 [![PHP](https://img.shields.io/packagist/php-v/ipstack/wizard.svg?style=flat-square)](https://php.net)
 
