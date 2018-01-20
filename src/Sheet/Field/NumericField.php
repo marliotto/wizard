@@ -12,6 +12,7 @@ namespace Ipstack\Wizard\Sheet\Field;
  * @property int|float|double|null $maxValue
  * @property int $mode
  * @property string $packFormatKey
+ * @property string $sqliteType
  * @property int|null $packFormatLength
  */
 class NumericField extends FieldAbstract
@@ -50,6 +51,11 @@ class NumericField extends FieldAbstract
      * @var string
      */
     protected $packFormatKey = 'C';
+
+    /**
+     * @var string
+     */
+    protected $sqliteType = 'INTEGER';
 
     /**
      * NumericType constructor.
@@ -94,6 +100,7 @@ class NumericField extends FieldAbstract
         if (!is_int($precision) || $precision < 0) {
             throw new \InvalidArgumentException('precision must be positive integer or 0');
         }
+        $this->sqliteType = empty($precision)?'INTEGER':'REAL';
         $this->precision = $precision;
         return $this;
     }

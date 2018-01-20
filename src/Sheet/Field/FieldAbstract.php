@@ -6,10 +6,15 @@ namespace Ipstack\Wizard\Sheet\Field;
  * Class FieldAbstract
  *
  * @property string $packFormatKey
+ * @property string $sqliteType
  * @property int|null $packFormatLength
  */
 abstract class FieldAbstract
 {
+    /*
+     * @var string;
+     */
+    protected $sqliteType = 'REAL';
 
     /**
      * @var string
@@ -47,5 +52,13 @@ abstract class FieldAbstract
      */
     public function updatePackFormat($value)
     {
+    }
+
+    /*
+     * @return string
+     */
+    public function getSqliteType()
+    {
+        return $this->sqliteType;
     }
 }

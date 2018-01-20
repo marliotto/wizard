@@ -2,6 +2,8 @@
 
 namespace Ipstack\Wizard;
 
+use Ipstack\Wizard\Sheet\Field\LatitudeField;
+use Ipstack\Wizard\Sheet\Field\LongitudeField;
 use Ipstack\Wizard\Sheet\Field\NumericField;
 use Ipstack\Wizard\Sheet\Field\StringField;
 use Ipstack\Wizard\Sheet\Network;
@@ -28,6 +30,7 @@ use PDOException;
  * @property PDOStatement[][] $prepare
  * @property string $prefix
  * @property array $meta
+ * @property FieldAbstract[][] $fields
  */
 class Wizard
 {
@@ -111,6 +114,11 @@ class Wizard
             'fields' => array(),
         ),
     );
+
+    /**
+     * @var array
+     */
+    protected $fields = array();
 
     /**
      * Wizard constructor.
@@ -218,8 +226,12 @@ class Wizard
         if (!($register instanceof Register)) {
             throw new \InvalidArgumentException('incorrect register');
         }
-        if (empty($register->getFields())) {
+        $fields = $register->getFields();
+        if (empty($fields)) {
             throw new \InvalidArgumentException('fields of register can not be empty');
+        }
+        foreach ($fields as $field=>$type) {
+            $this->fields[$name][$field] = $type['type'];
         }
         $this->registers[$name] = $register;
         return $this;
@@ -243,12 +255,12 @@ class Wizard
      * Add relation
      *
      * @param string $parent
-     * @param string $column
+     * @param string $field
      * @param string $child
      * @return $this
      * @throws \InvalidArgumentException
      */
-    public function addRelation($parent, $column, $child)
+    public function addRelation($parent, $field, $child)
     {
         if (!isset($this->registers[$parent])) {
             throw new \InvalidArgumentException('parent register not exists');
@@ -256,10 +268,10 @@ class Wizard
         if (!isset($this->registers[$child])) {
             throw new \InvalidArgumentException('child register not exists');
         }
-        if (!is_string($column)) {
-            throw new \InvalidArgumentException('incorrect column');
+        if (!is_string($field)) {
+            throw new \InvalidArgumentException('incorrect field');
         }
-        $this->relations[$parent][$column] = $child;
+        $this->relations[$parent][$field] = $child;
         return $this;
     }
 
@@ -319,19 +331,21 @@ class Wizard
         }
         $this->pdo->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
 
+        $this->sortRegisters();
+
         $this->createTmpDb();
 
         foreach ($this->registers as $table=>$register) {
             $this->addRegisterInTmpDb($register, $table);
         }
 
-        $this->addRelationsInTmpDb();
-
         foreach ($this->networks as $network) {
             $this->addNetworkInTmpDb($network);
         }
 
-        $this->setRelationsUsed();
+        $this->cleanTmpDb();
+
+        $this->updatePackFormat();
 
         foreach ($this->registers as $table=>$register) {
             $this->compileRegister($table);
@@ -345,7 +359,7 @@ class Wizard
 
         $this->pdo = null;
 
-        unlink($tmpDb);
+        //unlink($tmpDb);
 
     }
 
@@ -356,11 +370,11 @@ class Wizard
     {
         $sql = '
             CREATE TABLE `_ips` (
-                `id` INTEGER PRIMARY KEY AUTOINCREMENT, 
+                `id` INTEGER PRIMARY KEY AUTOINCREMENT,
                 `ip` INTEGER,
-                `action` TEXT, 
-                `parameter` TEXT, 
-                `value` TEXT, 
+                `action` TEXT,
+                `parameter` TEXT,
+                `value` TEXT,
                 `offset` TEXT
             );
             CREATE INDEX `ip` ON `_ips` (`ip`);
@@ -376,6 +390,32 @@ class Wizard
             'parameter' => NULL,
             'value' => NULL,
         ));
+        foreach ($this->registers as $table=>$register) {
+            $columns = $register->getFields();
+            $fields = array('`_pk` TEXT', '`_offset` INTEGER');
+            $index = array();
+            foreach ($columns as $field=>$data) {
+                $fields[] = '`' . $field . '`';// '.$data['type']->getSqliteType();
+                $fields[] = '`_len_' . $field . '` INTEGER';
+                $index[] = '`_len_' . $field . '`';
+            }
+            $constraints = array(
+                'CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE',
+            );
+            if (!empty($this->relations[$table])) {
+                foreach ($this->relations[$table] as $field => $child) {
+                    $line = 'CONSTRAINT `'.$table.'_'.$field.'_'.$child.'` FOREIGN KEY (`' . $field . '`)';
+                    $line .= ' REFERENCES `' . $child . '` (`_pk`)';
+                    $line .= ' ON DELETE CASCADE ON UPDATE CASCADE';
+                    $constraints[] = $line;
+                }
+            }
+            $sql = 'CREATE TABLE `' . $table . '` (' . implode(', ', $fields) . ', '.implode(', ', $constraints).');'.PHP_EOL;
+            foreach ($index as $i) {
+                $sql .= 'CREATE INDEX '.$i.' ON `'.$table.'` ('.$i.');'.PHP_EOL;
+            }
+            $this->pdo->exec($sql);
+        }
     }
 
     /**
@@ -399,18 +439,21 @@ class Wizard
             unset($row);
         }
         $this->pdo->beginTransaction();
+        $transactionIterator = 0;
+        $insert = $this->pdo->prepare('INSERT INTO `_ips` (`ip`,`action`,`parameter`,`value`) VALUES (:ip,:action,:parameter,:value);');
         while ($row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape'])) {
             $firstIpColumn = $network->getFistIpColumn()-1;
             $lastIpColumn = $network->getLastIpColumn()-1;
             if (!isset($row[$firstIpColumn])) {
+                $this->pdo->rollBack();
                 throw new \ErrorException('have not column with first ip address');
             }
             if (!isset($row[$lastIpColumn])) {
+                $this->pdo->rollBack();
                 throw new \ErrorException('have not column with last ip address');
             }
             $firstIp = $network->getLongIp($row[$firstIpColumn], false);
             $lastIp = $network->getLongIp($row[$lastIpColumn], true);
-            $insert = $this->pdo->prepare('INSERT INTO `_ips` (`ip`,`action`,`parameter`,`value`) VALUES (:ip,:action,:parameter,:value);');
             foreach ($data['map'] as $column=>$register) {
                 $column--;
                 $value = isset($row[$column]) ? $row[$column] : null;
@@ -426,22 +469,18 @@ class Wizard
                     'parameter' => $register,
                     'value' => $value,
                 ));
+                $transactionIterator += 2;
+                if ($transactionIterator > 100000) {
+                    $transactionIterator = 0;
+                    $this->pdo->commit();
+                    $this->pdo->beginTransaction();
+                }
                 if (isset($row[$column])) {
                     $this->meta['networks']['fields'][$register] = null;
-                    $this->setUsed($register, $value);
                 }
             }
         }
         $this->pdo->commit();
-    }
-
-    protected function setUsed($register, $id)
-    {
-        if (!isset($this->prepare['update'][$register])) {
-            $sql = 'UPDATE `'.$register.'` SET `_used`=\'1\' WHERE `_pk` = :pk;';
-            $this->prepare['update'][$register] = $this->pdo->prepare($sql);
-        }
-        $this->prepare['update'][$register]->execute(array('pk'=>$id));
     }
 
     /**
@@ -455,16 +494,14 @@ class Wizard
         $source = $register->getCsv();
 
         $columns = $register->getFields();
-        $fields = array('`_pk`', '`_used`');
-        $params = array(':_pk',':_used');
+        $fields = array('`_pk`');
+        $params = array(':_pk');
         foreach ($columns as $field=>$data) {
-            $create[] = '`' . $field . '` TEXT';
             $fields[] = '`' . $field . '`';
+            $fields[] = '`_len_' . $field . '`';
             $params[] = ':' . $field;
+            $params[] = ':_len_' . $field;
         }
-        $sql = 'CREATE TABLE `' . $table . '` (' . implode(',', $fields) . ', CONSTRAINT `_pk` PRIMARY KEY (`_pk`) ON CONFLICT IGNORE);';
-        $sql .= 'CREATE INDEX `_used` ON `'.$table.'` (`_used`);';
-        $this->pdo->exec($sql);
         $sql = 'INSERT INTO `'.$table.'` (' . implode(',', $fields) . ') VALUES (' . implode(',', $params) . ');';
         $insertStatement = $this->pdo->prepare($sql);
 
@@ -477,6 +514,7 @@ class Wizard
         $rowIterator = 0;
         $idColumn = $register->getId()-1;
         $this->pdo->beginTransaction();
+        $transactionIterator = 0;
         while ($row = fgetcsv($csv, 4096, $source['delimiter'], $source['enclosure'], $source['escape'])) {
             $rowIterator++;
             $rowId = $rowIterator;
@@ -484,96 +522,25 @@ class Wizard
                 $rowId = $row[$idColumn];
             }
             $values = array(
-                '_pk'=>$rowId,
-                '_used'=>0
+                '_pk' => $rowId,
             );
             foreach ($columns as $field=>$data) {
                 $column = $data['column']-1;
-                /**
-                 * @var FieldAbstract $type
-                 */
-                $type = $data['type'];
                 $value = isset($row[$column])?$row[$column]:null;
-                $value = $type->getValidValue($value);
+                $value = $this->fields[$table][$field]->getValidValue($value);
                 $values[$field] = $value;
-                $type->updatePackFormat($value);
+                $values['_len_'.$field] = strlen($value);
             };
+
             $insertStatement->execute($values);
+            $transactionIterator++;
+            if ($transactionIterator > 100000) {
+                $this->pdo->commit();
+                $this->pdo->beginTransaction();
+                $transactionIterator = 0;
+            }
         }
-        $format = array();
-        $empty = array();
-        foreach ($columns as $field=>$data) {
-            /**
-             * @var FieldAbstract $type
-             */
-            $type = $data['type'];
-            $fieldPackFormat = $type->getPackFormat();
-            $format['pack'][] = $fieldPackFormat;
-            $format['unpack'][] = $fieldPackFormat.$field;
-            $empty[$field] = null;
-        };
-        $pack = implode('', $format['pack']);
-        $bin = self::packArray($pack,$empty);
-        $this->meta['registers'][$table]['pack'] = $pack;
-        $this->meta['registers'][$table]['unpack'] = implode('/',$format['unpack']);
-        $this->meta['registers'][$table]['len'] = strlen($bin);
-        $this->meta['registers'][$table]['items'] = 0;
-        $this->meta['registers'][$table]['fields'] = $empty;
         $this->pdo->commit();
-    }
-
-    /**
-     * Set used flag for relations
-     */
-    protected function setRelationsUsed()
-    {
-        $parents = array_keys($this->meta['networks']['fields']);
-        while (!empty(count($parents))) {
-            $parent = array_shift($parents);
-            if (!empty($this->relations[$parent])) {
-                foreach ($this->relations[$parent] as $field => $child) {
-                    $parents[] = $child;
-                    $sql = 'SELECT `'.$field.'` FROM `'.$parent.'` GROUP BY `'.$field.'`;';
-                    $res = $this->pdo->query($sql);
-                    $this->pdo->beginTransaction();
-                    while ($row = $res->fetch()) {
-                        $this->setUsed($child, $row[$field]);
-                    }
-                    $this->pdo->commit();
-                }
-            }
-        };
-    }
-
-    /**
-     * Create temporary relations
-     */
-    protected function addRelationsInTmpDb()
-    {
-        $parentType = new StringField();
-        $fieldType = new StringField();
-        $childType = new StringField();
-        foreach ($this->relations as $parent => $networkRelation) {
-            foreach ($networkRelation as $field => $child) {
-                $parentType->updatePackFormat($parent);
-                $childType->updatePackFormat($child);
-                $fieldType->updatePackFormat($field);
-
-                $this->meta['relations']['items'] ++;
-                $this->meta['relations']['data'][] = array(
-                    $parent,
-                    $field,
-                    $child
-                );
-            }
-        }
-        $this->meta['relations']['pack'] = $parentType->getPackFormat()
-            .$fieldType->getPackFormat()
-            .$childType->getPackFormat();
-        $this->meta['relations']['unpack'] = $parentType->getPackFormat().'p/'
-            .$fieldType->getPackFormat().'f/'
-            .$childType->getPackFormat().'c';
-        $this->meta['relations']['len'] = strlen(pack($this->meta['relations']['pack'], null, null, null));
     }
 
     /**
@@ -589,12 +556,28 @@ class Wizard
         $bin = self::packArray($pack, $empty);
         fwrite($file,$bin);
         $offset = 0;
-        $data = $this->pdo->query('SELECT * FROM `'.$register.'` WHERE `_used` = \'1\'');
+        $select = array(
+            '*' => '`'.$register.'`.*',
+        );
+        $join = array();
+        if (isset($this->relations[$register])) {
+            foreach ($this->relations[$register] as $fk=>$fTable) {
+                $as = $fTable.'_'.$fk;
+                $join[$as] = ' INNER JOIN `'.$fTable.'` `'.$as.'` ON (`'.$register.'`.`'.$fk.'` = `'.$as.'`.`_pk`)';
+                $select[$as] = '`'.$as.'`.`_offset` AS `'.$fk.'`';
+            }
+        }
+        $sql = 'SELECT '.implode(', ', $select).' FROM `'.$register.'`'.implode(',', $join).';';
+        $data = $this->pdo->query($sql);
         $this->pdo->beginTransaction();
+        $transactionIterator = 0;
         while($row = $data->fetch()) {
             $rowId = $row['_pk'];
             unset($row['_pk']);
-            unset($row['_used']);
+            unset($row['_offset']);
+            foreach ($this->fields[$register] as $field=>$type) {
+                unset($row['_len_'.$field]);
+            }
             $check = 0;
             foreach ($row as $cell=>$cellValue) {
                 if (!empty($cellValue)) $check = 1;
@@ -604,7 +587,16 @@ class Wizard
                 $offset ++;
                 fwrite($file,$bin);
             }
+
+            $this->pdo->exec('UPDATE `'.$register.'` SET `_offset` =\''.($check?$offset:0).'\' WHERE `_pk` = \''.$rowId.'\';');
             $this->pdo->exec('UPDATE `_ips` SET `offset` =\''.($check?$offset:0).'\' WHERE `parameter` = \''.$register.'\' AND `value`=\''.$rowId.'\';');
+
+            $transactionIterator += 2;
+            if ($transactionIterator > 100000) {
+                $this->pdo->commit();
+                $this->pdo->beginTransaction();
+                $transactionIterator = 0;
+            }
         }
         $this->meta['registers'][$register]['items'] = $offset;
         $this->pdo->commit();
@@ -695,6 +687,30 @@ class Wizard
                 }
             }
         }
+        $parentType = new StringField();
+        $fieldType = new StringField();
+        $childType = new StringField();
+        foreach ($this->relations as $parent => $networkRelation) {
+            foreach ($networkRelation as $field => $child) {
+                $parentType->updatePackFormat($parent);
+                $childType->updatePackFormat($child);
+                $fieldType->updatePackFormat($field);
+
+                $this->meta['relations']['items'] ++;
+                $this->meta['relations']['data'][] = array(
+                    $parent,
+                    $field,
+                    $child
+                );
+            }
+        }
+        $this->meta['relations']['pack'] = $parentType->getPackFormat()
+            .$fieldType->getPackFormat()
+            .$childType->getPackFormat();
+        $this->meta['relations']['unpack'] = $parentType->getPackFormat().'p/'
+            .$fieldType->getPackFormat().'f/'
+            .$childType->getPackFormat().'c';
+        $this->meta['relations']['len'] = strlen(pack($this->meta['relations']['pack'], null, null, null));
     }
 
     /**
@@ -867,6 +883,130 @@ class Wizard
         fclose($database);
 
         rename($tmp, $fileName);
+    }
+
+    /**
+     * Sort registers.
+     *
+     */
+    protected function sortRegisters()
+    {
+        $sortedRegisters = array();
+        $deletedRegisters = $registers = array_keys($this->registers);
+        foreach ($this->networks as $network) {
+            foreach ($network['map'] as $register) {
+                $nd = array_search($register, $deletedRegisters);
+                if (false !== $nd) {
+                    unset($deletedRegisters[$nd]);
+                }
+            }
+        }
+        foreach ($registers as $register) {
+            $nd = array_search($register, $deletedRegisters);
+            if (false !== $nd) {
+                unset($deletedRegisters[$nd]);
+            }
+            if (!empty($this->relations[$register])) {
+                foreach ($this->relations[$register] as $child) {
+                    $nd = array_search($child, $deletedRegisters);
+                    if (false !== $nd) {
+                        unset($deletedRegisters[$nd]);
+                    }
+                    $nc = array_search($child, $sortedRegisters);
+                    if (false === $nc) {
+                        array_unshift($sortedRegisters, $child);
+                        unset($registers[$child]);
+                        $nc = 0;
+                    }
+                    $np = array_search($register, $sortedRegisters);
+                    if (false === $np) {
+                        array_splice($sortedRegisters, $nc+1, 0, $register);
+                        unset($registers[$register]);
+                    } elseif ( $np < $nc ) {
+                        array_splice($sortedRegisters, $np+1, 1);
+                        array_splice($sortedRegisters, $nc+1, 0, $register);
+                    }
+                }
+            }
+        }
+        foreach ($sortedRegisters as $register) {
+            if (in_array($register, $deletedRegisters)) {
+                unset($this->registers[$register]);
+            } else {
+                $data = $this->registers[$register];
+                unset($this->registers[$register]);
+                $this->registers[$register] = $data;
+            }
+        }
+    }
+
+    protected function cleanTmpDb()
+    {
+        $registers = array_reverse(array_keys($this->registers));
+        foreach ($registers as $parent) {
+            if (!empty($this->relations[$parent])) {
+                foreach ($this->relations[$parent] as $field => $child) {
+                    $innerSql = 'SELECT `' . $field . '` FROM `' . $parent . '` GROUP BY `' . $field . '`';
+                    $sql = 'DELETE FROM `' . $child . '` WHERE `_pk` NOT IN (' . $innerSql . ');';
+                    $this->pdo->exec($sql);
+                }
+            }
+        }
+        foreach ($this->networks as $network) {
+            foreach ($network['map'] as $register) {
+                $innerSql = 'SELECT `_pk` FROM `'.$register.'` GROUP BY `_pk`';
+                $sql = 'DELETE FROM `_ips` WHERE  WHERE `parameter` = "'.$register.'" AND `value` NOT IN ('.$innerSql.');';
+                $this->pdo->exec($sql);
+            }
+        }
+    }
+
+    protected function updatePackFormat() {
+        foreach ($this->fields as $table=>$fields) {
+            $format = array();
+            $empty = array();
+            foreach ($fields as $field=>$type) {
+                $row = array(
+                    'max' => null,
+                );
+                if (isset($this->relations[$table][$field])) {
+                    $this->fields[$table][$field] = new NumericField(0);
+                    $sql = 'SELECT COUNT(*) AS `max` FROM `' . $this->relations[$table][$field] . '`;';
+                    $res = $this->pdo->query($sql);
+                    $row = $res->fetch();
+                } else {
+                    switch (get_class($this->fields[$table][$field])) {
+                        case LatitudeField::class:
+                            break;
+                        case LongitudeField::class:
+                            break;
+                        case StringField::class:
+                            $sql = 'SELECT MAX(`_len_' . $field . '`) AS `max` FROM `'.$table.'`;';
+                            $res = $this->pdo->query($sql);
+                            $r = $res->fetch();
+                            $row['max'] = pack('A'.$r['max'], '1');
+                            break;
+                        default:
+                            $sql = 'SELECT MAX(`' . $field . '`) AS `max` FROM `' . $table . '`;';
+                            $res = $this->pdo->query($sql);
+                            $row = $res->fetch();
+                            break;
+                    }
+                }
+                $this->fields[$table][$field]->updatePackFormat($row['max']);
+                $fieldPackFormat = $this->fields[$table][$field]->getPackFormat();
+                $format['pack'][] = $fieldPackFormat;
+                $format['unpack'][] = $fieldPackFormat.$field;
+                $empty[$field] = null;
+            }
+            $pack = implode('', $format['pack']);
+            $bin = self::packArray($pack,$empty);
+            $this->meta['registers'][$table]['pack'] = $pack;
+            $this->meta['registers'][$table]['unpack'] = implode('/',$format['unpack']);
+            $this->meta['registers'][$table]['len'] = strlen($bin);
+            $this->meta['registers'][$table]['items'] = 0;
+            $this->meta['registers'][$table]['fields'] = $empty;
+        }
     }
 
     /**

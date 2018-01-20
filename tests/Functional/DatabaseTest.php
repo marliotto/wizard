@@ -161,9 +161,11 @@ class DatabaseTest extends TestCase
         $this->assertSame('Ccity', $db['meta']['networks']['pack']);
         $this->assertSame(5, $db['meta']['networks']['len']);
         $this->assertSame(7, $db['meta']['networks']['items']);
+        $this->assertSame('city', $db['relations'][0]['p']);
+        $this->assertSame('countryId', $db['relations'][0]['f']);
         $this->assertSame('country', $db['relations'][0]['c']);
-        $this->assertSame('country', $db['relations'][0]['c']);
-        $this->assertSame('country', $db['relations'][0]['c']);
+        $this->assertArrayHasKey($db['registers']['city'][2]['countryId'], $db['registers']['country']);
+        $this->assertSame($db['registers']['country'][$db['registers']['city'][2]['countryId']]['code'], 'kz');
         $this->assertSame($time, $db['time']);
         $this->assertSame($author, $db['author']);
         $this->assertSame($license, $db['license']);
@@ -319,11 +321,11 @@ class DatabaseTest extends TestCase
             $result['networks'][] = $data;
         }
 
-        foreach ($result['meta']['registers'] as $id=>$register) {
-            for ($i=0;$i<=$register['items'];$i++) {
-                $result['registers'][$id][] = unpack(
-                    $register['pack'],
-                    fread($db, $register['len'])
+        foreach ($result['meta']['registers'] as $register=>$data) {
+            for ($id=0;$id<=$data['items'];$id++) {
+                $result['registers'][$register][$id] = unpack(
+                    $data['pack'],
+                    fread($db, $data['len'])
                 );
             }
         }

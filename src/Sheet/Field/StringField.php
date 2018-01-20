@@ -43,6 +43,11 @@ class StringField extends FieldAbstract
      */
     protected $packFormatKey = 'A';
 
+    /*
+     * @var string
+     */
+    protected $sqliteType = 'TEXT';
+
     /**
      * StringType constructor.
      *
