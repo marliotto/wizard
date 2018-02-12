@@ -395,7 +395,7 @@ class Wizard
             $fields = array('`_pk` TEXT', '`_offset` INTEGER');
             $index = array();
             foreach ($columns as $field=>$data) {
-                $fields[] = '`' . $field . '`';// '.$data['type']->getSqliteType();
+                $fields[] = '`' . $field . '` '.$data['type']->getSqliteType();
                 $fields[] = '`_len_' . $field . '` INTEGER';
                 $index[] = '`_len_' . $field . '`';
             }
